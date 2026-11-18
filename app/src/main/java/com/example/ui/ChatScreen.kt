@@ -464,10 +464,15 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
     val availableSendAsIdentities by viewModel.observeAvailableSendAsIdentities(chatId)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     var selectedSendAsIdentity by remember(chatId) { mutableStateOf<SendAsIdentity?>(null) }
-    val activeSendAsIdentity = remember(availableSendAsIdentities, selectedSendAsIdentity) {
+    val activeSendAsIdentity = remember(chatId, chat.isChannel, availableSendAsIdentities, selectedSendAsIdentity) {
         availableSendAsIdentities.find {
             it.id == selectedSendAsIdentity?.id && it.type == selectedSendAsIdentity?.type
-        } ?: availableSendAsIdentities.firstOrNull()
+        } ?: if (chat.isChannel) {
+            availableSendAsIdentities.find { it.id == chatId && it.type == "CHANNEL" }
+                ?: availableSendAsIdentities.firstOrNull()
+        } else {
+            availableSendAsIdentities.firstOrNull()
+        }
     }
     var showSendAsMenu by remember { mutableStateOf(false) }
     val pendingJoinRequests by if (chat.isGroup && isChannelOrGroupAdmin) {
@@ -1140,7 +1145,7 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                 replyToMessageText = customQuoteText ?: replyingToMessage?.text,
                                                 mediaPath = sticker.id,
                                                 mediaType = "sticker",
-                                                sendAsIdentity = if (chat.isGroup) activeSendAsIdentity else null
+                                                sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                             )
                                             inputText = ""
                                             replyingToMessage = null
@@ -1316,30 +1321,12 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         .padding(horizontal = if (isCompactWidth) 6.dp else 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (chat.isChannel && linkedDiscussionGroup != null) {
+                                    if ((chat.isChannel || chat.isGroup) && availableSendAsIdentities.isNotEmpty() && activeSendAsIdentity != null) {
                                         Box(modifier = Modifier.padding(end = 4.dp)) {
-                                            com.example.ui.channel.LinkedGroupAvatar(
-                                                groupId = linkedDiscussionGroup.id,
-                                                groupTitle = linkedDiscussionGroup.title,
-                                                avatarUrl = linkedDiscussionGroupCustom?.avatarUrl,
+                                            com.example.ui.group.SendAsAvatarButton(
+                                                identity = activeSendAsIdentity,
                                                 avatarSize = avatarSize,
-                                                testTag = "channel_admin_linked_group_avatar",
-                                                onClick = {
-                                                    focusManager.clearFocus()
-                                                    keyboardController?.hide()
-                                                    showMediaPanel = false
-                                                    navController.navigate("chat/${linkedDiscussionGroup.id}")
-                                                }
-                                            )
-                                        }
-                                    } else if (chat.isGroup && availableSendAsIdentities.isNotEmpty() && activeSendAsIdentity != null) {
-                                        Box(modifier = Modifier.padding(end = 4.dp)) {
-                                            com.example.ui.channel.LinkedGroupAvatar(
-                                                groupId = activeSendAsIdentity.id,
-                                                groupTitle = activeSendAsIdentity.title,
-                                                avatarUrl = activeSendAsIdentity.avatarUrl,
-                                                avatarSize = avatarSize,
-                                                testTag = "group_send_as_avatar_button",
+                                                testTag = if (chat.isChannel) "channel_send_as_avatar_button" else "group_send_as_avatar_button",
                                                 onClick = { showSendAsMenu = true }
                                             )
                                             SendAsIdentityMenu(
@@ -1430,6 +1417,9 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
 
                                         val placeholderLabel = when {
                                             chat.isChannel && isSilentBroadcast -> "Тихая публикация..."
+                                            chat.isChannel && activeSendAsIdentity != null && activeSendAsIdentity.id != chatId ->
+                                                "От имени ${activeSendAsIdentity.title}..."
+                                            chat.isChannel -> "Публикация"
                                             chat.isGroup && activeSendAsIdentity?.type == "GROUP" -> "От имени группы..."
                                             chat.isGroup && activeSendAsIdentity?.type == "CHANNEL" -> "От имени ${activeSendAsIdentity.title}..."
                                             else -> "Сообщение..."
@@ -1535,7 +1525,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                             text = "📷 Сделанное фото",
                                                             audioPath = null,
                                                             expiresIn = expiresIn,
-                                                            documentData = photoDoc
+                                                            documentData = photoDoc,
+                                                            sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                                         )
                                                     },
                                                     leadingIcon = { Icon(Icons.Filled.CameraAlt, contentDescription = null) }
@@ -1552,7 +1543,14 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                     text = { Text("Геолокация") },
                                                     onClick = {
                                                         attachmentMenuExpanded = false
-                                                        viewModel.sendMessage(chatId, activeAccount?.id ?: "", "📍 Местоположение: 37.4221° N, 122.0841° W", null, expiresIn)
+                                                        viewModel.sendMessage(
+                                                            chatId = chatId,
+                                                            senderId = activeAccount?.id ?: "",
+                                                            text = "📍 Местоположение: 37.4221° N, 122.0841° W",
+                                                            audioPath = null,
+                                                            expiresIn = expiresIn,
+                                                            sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
+                                                        )
                                                     },
                                                     leadingIcon = { Icon(Icons.Filled.LocationOn, contentDescription = null) }
                                                 )
@@ -1647,7 +1645,7 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                         documentData = null,
                                                         replyToMessageId = replyingToMessage?.id,
                                                         replyToMessageText = customQuoteText ?: replyingToMessage?.text,
-                                                        sendAsIdentity = if (chat.isGroup) activeSendAsIdentity else null
+                                                        sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                                     )
                                                     inputText = ""
                                                     replyingToMessage = null
@@ -1721,7 +1719,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                     replyToMessageId = replyingToMessage?.id,
                                                     replyToMessageText = customQuoteText ?: replyingToMessage?.text,
                                                     mediaPath = "video_note_${System.currentTimeMillis()}.mp4",
-                                                    mediaType = "video_note"
+                                                    mediaType = "video_note",
+                                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                                 )
                                                 replyingToMessage = null
                                                 customQuoteText = null
@@ -1741,7 +1740,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                                     expiresIn = expiresIn,
                                                     documentData = """{"type":"voice_note","duration":"$durationStr","durationSeconds":$duration}""",
                                                     replyToMessageId = replyingToMessage?.id,
-                                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text
+                                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text,
+                                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                                 )
                                                 replyingToMessage = null
                                                 customQuoteText = null
@@ -1789,7 +1789,7 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                     replyToMessageText = customQuoteText ?: replyingToMessage?.text,
                                     mediaPath = gif.gifUrl,
                                     mediaType = "gif",
-                                    sendAsIdentity = if (chat.isGroup) activeSendAsIdentity else null
+                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                 )
                                 replyingToMessage = null
                                 customQuoteText = null
@@ -1806,7 +1806,7 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                     replyToMessageText = customQuoteText ?: replyingToMessage?.text,
                                     mediaPath = sticker.id,
                                     mediaType = "sticker",
-                                    sendAsIdentity = if (chat.isGroup) activeSendAsIdentity else null
+                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                 )
                                 replyingToMessage = null
                                 customQuoteText = null
@@ -2665,7 +2665,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                     preset = selectedCompressionPreset,
                                     expiresIn = expiresIn,
                                     replyToMessageId = replyingToMessage?.id,
-                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text
+                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text,
+                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                 )
                             } else {
                                 val documentJson = org.json.JSONObject().apply {
@@ -2683,7 +2684,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                     expiresIn = expiresIn,
                                     documentData = documentJson,
                                     replyToMessageId = replyingToMessage?.id,
-                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text
+                                    replyToMessageText = customQuoteText ?: replyingToMessage?.text,
+                                    sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                                 )
                             }
                         },
@@ -3323,6 +3325,14 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         senderCustomTag = senderCustomTag,
                                         senderEmojiStatus = if (chat.isChannel && message.senderIdentityType == "CHANNEL") channelCustomization.emojiStatus else senderEmoji,
                                         isGroupChat = chat.isGroup,
+                                        showSenderHeader = chat.isGroup || (
+                                            chat.isChannel && (
+                                                message.senderIdentityType == "PERSONAL" ||
+                                                    (message.senderIdentityType == "CHANNEL" &&
+                                                        !message.senderIdentityId.isNullOrBlank() &&
+                                                        message.senderIdentityId != chatId)
+                                                )
+                                            ),
                                         isBot = isBot,
                                         isSelectionMode = isSelectionMode,
                                         isSelected = isSelected,
@@ -5012,7 +5022,8 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                         text = "📊 [Опрос] ${newPoll.question}",
                         audioPath = null,
                         expiresIn = expiresIn,
-                        documentData = pollDoc
+                        documentData = pollDoc,
+                        sendAsIdentity = if (chat.isGroup || chat.isChannel) activeSendAsIdentity else null
                     )
                 }
             )
@@ -5040,6 +5051,7 @@ fun MessageBubble(
     senderCustomTag: String? = null,
     senderEmojiStatus: String? = null,
     isGroupChat: Boolean = false,
+    showSenderHeader: Boolean = isGroupChat,
     isBot: Boolean = false,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
@@ -5302,7 +5314,7 @@ fun MessageBubble(
                 )
             }
             Column {
-                if (isGroupChat && senderName != null) {
+                if (showSenderHeader && senderName != null) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

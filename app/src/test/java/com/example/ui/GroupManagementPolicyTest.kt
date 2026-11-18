@@ -263,6 +263,73 @@ class GroupManagementPolicyTest {
     }
 
     @Test
+    fun sendAsIdentitiesAvailableInChannelEvenWithLinkedDiscussionGroup() {
+        val channelWithLinkedGroup = Chat(
+            id = "c_official",
+            title = "KuoteX Officiall",
+            isChannel = true,
+            linkedDiscussionGroupId = "g_comments",
+            lastMessage = ""
+        )
+        val linkedGroup = Chat(
+            id = "g_comments",
+            title = "KuoteX Чат",
+            isGroup = true,
+            linkedChannelId = "c_official",
+            lastMessage = ""
+        )
+        val secondaryChannel = Chat(
+            id = "c_news",
+            title = "KuoteX News",
+            isChannel = true,
+            lastMessage = ""
+        )
+
+        val adminMembers = mapOf(
+            "c_official" to listOf(
+                GroupMember(chatId = "c_official", userId = "u_me", userName = "Neo", isAdmin = true, role = "creator"),
+                GroupMember(chatId = "c_official", userId = "u_sub", userName = "Subscriber", isAdmin = false, role = "subscriber")
+            ),
+            "g_comments" to listOf(
+                GroupMember(chatId = "g_comments", userId = "u_me", userName = "Neo", isAdmin = true, role = "creator")
+            ),
+            "c_news" to listOf(
+                GroupMember(chatId = "c_news", userId = "u_me", userName = "Neo", isAdmin = true, role = "admin")
+            )
+        )
+        val customizations = mapOf(
+            "c_official" to ChannelCustomization(chatId = "c_official", subscriberCount = 2, isPublic = true),
+            "c_news" to ChannelCustomization(chatId = "c_news", subscriberCount = 5, isPublic = false)
+        )
+
+        val channelIdentities = resolveAvailableSendAsIdentities(
+            groupChat = channelWithLinkedGroup,
+            activeAccount = activeUser,
+            allChats = listOf(channelWithLinkedGroup, linkedGroup, secondaryChannel),
+            allMembersByChat = adminMembers,
+            customizations = customizations
+        )
+
+        // Personal account + current channel + other owned/managed channel; linked group is not included
+        assertEquals(listOf("PERSONAL", "CHANNEL", "CHANNEL"), channelIdentities.map { it.type })
+        assertEquals(listOf("u_me", "c_official", "c_news"), channelIdentities.map { it.id })
+        assertEquals("личный аккаунт", channelIdentities[0].subtitle)
+        assertEquals("2 подписчика", channelIdentities[1].subtitle)
+        assertTrue(channelIdentities[2].isPrivate)
+
+        // Non-admin subscriber has no Send-As identities in the channel
+        val subscriberAccount = activeUser.copy(id = "u_sub", displayName = "Subscriber")
+        val subscriberIdentities = resolveAvailableSendAsIdentities(
+            groupChat = channelWithLinkedGroup,
+            activeAccount = subscriberAccount,
+            allChats = listOf(channelWithLinkedGroup, linkedGroup, secondaryChannel),
+            allMembersByChat = adminMembers,
+            customizations = customizations
+        )
+        assertTrue(subscriberIdentities.isEmpty())
+    }
+
+    @Test
     fun russianParticipantAndSubscriberPluralizationIsAccurate() {
         assertEquals("1 участник", formatParticipantCount(1))
         assertEquals("2 участника", formatParticipantCount(2))

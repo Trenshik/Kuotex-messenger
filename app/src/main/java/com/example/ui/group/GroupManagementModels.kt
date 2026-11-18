@@ -7,7 +7,9 @@ import com.example.ui.Chat
 import com.example.ui.GroupMember
 import com.example.ui.UserAccount
 import com.example.ui.channel.ChannelCustomization
+import com.example.ui.channel.findCurrentChannelMember
 import com.example.ui.channel.hasAllChannelPermissions
+import com.example.ui.channel.isChannelAdminOrCreator
 
 enum class GroupInvitePrivacy(val code: String, val label: String) {
     EVERYBODY("EVERYBODY", "Все"),
@@ -223,19 +225,84 @@ fun resolveAvailableSendAsIdentities(
     allMembersByChat: Map<String, List<GroupMember>>,
     customizations: Map<String, ChannelCustomization>
 ): List<SendAsIdentity> {
-    if (activeAccount == null || !groupChat.isGroup) return emptyList()
+    if (activeAccount == null || (!groupChat.isGroup && !groupChat.isChannel)) return emptyList()
     val groupMembers = allMembersByChat[groupChat.id].orEmpty()
-    val currentGroupMember = groupMembers.find { it.userId == activeAccount.id }
-    val isGroupAdmin = currentGroupMember != null &&
-        (currentGroupMember.isAdmin || currentGroupMember.role == "creator" || currentGroupMember.role == "admin")
+    val currentGroupMember = findCurrentChannelMember(groupMembers, activeAccount)
+    val isGroupAdmin = isChannelAdminOrCreator(groupMembers, activeAccount)
 
     val ownedOrManagedChannels = allChats.filter { ch ->
         if (!ch.isChannel) return@filter false
         val chMembers = allMembersByChat[ch.id].orEmpty()
-        chMembers.any {
-            it.userId == activeAccount.id &&
-                (it.role == "creator" || it.role == "admin" || it.isAdmin)
+        isChannelAdminOrCreator(chMembers, activeAccount)
+    }
+
+    if (groupChat.isChannel) {
+        val canPostAsCurrentChannel = isGroupAdmin || ownedOrManagedChannels.any { it.id == groupChat.id }
+        if (!canPostAsCurrentChannel) {
+            return emptyList()
         }
+
+        val result = mutableListOf<SendAsIdentity>()
+        val customChannelTag = currentGroupMember?.customTitle?.takeIf { it.isNotBlank() }
+            ?: if (currentGroupMember?.role == "creator") "Владелец" else null
+
+        // 1. Personal account
+        result.add(
+            SendAsIdentity(
+                id = activeAccount.id,
+                type = "PERSONAL",
+                title = activeAccount.displayName.ifBlank { activeAccount.username.ifBlank { "Вы" } },
+                subtitle = "личный аккаунт",
+                avatarUrl = activeAccount.profilePicUrl.takeIf { it.isNotBlank() },
+                emojiStatus = activeAccount.customStatus.takeIf { it.isNotBlank() && it.length <= 4 },
+                isPrivate = false,
+                customTag = customChannelTag
+            )
+        )
+
+        // 2. Current channel
+        val currentCustom = customizations[groupChat.id]
+        val currentCount = maxOf(
+            currentCustom?.subscriberCount ?: 0,
+            groupMembers.size
+        ).coerceAtLeast(1)
+        result.add(
+            SendAsIdentity(
+                id = groupChat.id,
+                type = "CHANNEL",
+                title = groupChat.title,
+                subtitle = formatSubscriberCount(currentCount),
+                avatarUrl = currentCustom?.avatarUrl,
+                emojiStatus = currentCustom?.emojiStatus?.takeIf { it.isNotBlank() },
+                isPrivate = currentCustom?.isPublic == false,
+                customTag = "канал"
+            )
+        )
+
+        // 3. Any other owned/managed channels
+        ownedOrManagedChannels
+            .filter { it.id != groupChat.id }
+            .forEach { channel ->
+                val custom = customizations[channel.id]
+                val chCount = maxOf(
+                    custom?.subscriberCount ?: 0,
+                    allMembersByChat[channel.id]?.size ?: 0
+                ).coerceAtLeast(1)
+                result.add(
+                    SendAsIdentity(
+                        id = channel.id,
+                        type = "CHANNEL",
+                        title = channel.title,
+                        subtitle = formatSubscriberCount(chCount),
+                        avatarUrl = custom?.avatarUrl,
+                        emojiStatus = custom?.emojiStatus?.takeIf { it.isNotBlank() },
+                        isPrivate = custom?.isPublic == false,
+                        customTag = "канал"
+                    )
+                )
+            }
+
+        return result
     }
 
     // Per requirement: "Написать от имени..." works in all groups when the user has own/managed channels

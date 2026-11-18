@@ -2120,7 +2120,8 @@ class AppViewModel(
         preset: com.example.utils.ImageCompressionPreset = com.example.utils.ImageCompressionPreset.BALANCED_AUTO,
         expiresIn: Long? = null,
         replyToMessageId: String? = null,
-        replyToMessageText: String? = null
+        replyToMessageText: String? = null,
+        sendAsIdentity: com.example.ui.group.SendAsIdentity? = null
     ) {
         viewModelScope.launch {
             try {
@@ -2142,7 +2143,8 @@ class AppViewModel(
                     expiresIn = expiresIn,
                     documentData = uploadResult.toDocumentJson(),
                     replyToMessageId = replyToMessageId,
-                    replyToMessageText = replyToMessageText
+                    replyToMessageText = replyToMessageText,
+                    sendAsIdentity = sendAsIdentity
                 )
 
                 kotlinx.coroutines.delay(500)
@@ -2166,7 +2168,8 @@ class AppViewModel(
                     expiresIn = expiresIn,
                     documentData = fallbackDoc,
                     replyToMessageId = replyToMessageId,
-                    replyToMessageText = replyToMessageText
+                    replyToMessageText = replyToMessageText,
+                    sendAsIdentity = sendAsIdentity
                 )
                 com.example.data.FirebaseStorageManager.resetState()
             }
@@ -2286,6 +2289,12 @@ class AppViewModel(
                     val linkedGroup = repository.getChatById(linkedGroupId)
                     if (linkedGroup != null && linkedGroup.isGroup && !linkedGroup.isChannel) {
                         val fwdMsgId = java.util.UUID.randomUUID().toString()
+                        val fwdIdentityId = if (sendAsIdentity != null) resolvedIdentityId else chatId
+                        val fwdIdentityType = if (sendAsIdentity != null) resolvedIdentityType else "CHANNEL"
+                        val fwdDisplayName = if (sendAsIdentity != null) resolvedDisplayName else targetChat.title
+                        val fwdAvatarUrl = if (sendAsIdentity != null) resolvedAvatarUrl else channelCustom.avatarUrl
+                        val fwdCustomTag = if (sendAsIdentity != null) resolvedTag else "канал"
+                        val fwdEmojiStatus = if (sendAsIdentity != null) resolvedEmojiStatus else channelCustom.emojiStatus
                         val fwdMsg = Message(
                             id = fwdMsgId,
                             chatId = linkedGroupId,
@@ -2302,14 +2311,14 @@ class AppViewModel(
                             forwardOriginalSenderId = null,
                             forwardOriginalSenderName = null,
                             forwardHideSender = false,
-                            senderIdentityId = chatId,
-                            senderIdentityType = "CHANNEL",
-                            senderDisplayName = targetChat.title,
-                            senderAvatarUrl = channelCustom.avatarUrl,
-                            senderCustomTag = "канал",
-                            senderEmojiStatus = channelCustom.emojiStatus
+                            senderIdentityId = fwdIdentityId,
+                            senderIdentityType = fwdIdentityType,
+                            senderDisplayName = fwdDisplayName,
+                            senderAvatarUrl = fwdAvatarUrl,
+                            senderCustomTag = fwdCustomTag,
+                            senderEmojiStatus = fwdEmojiStatus
                         )
-                        repository.insertMessageAndUpdateChat(fwdMsg, sanitizedText, targetChat.title)
+                        repository.insertMessageAndUpdateChat(fwdMsg, sanitizedText, fwdDisplayName ?: targetChat.title)
                         repository.updatePinStatus(fwdMsgId, true)
                         repository.updatePinnedMessage(linkedGroupId, fwdMsgId)
                         repository.updateMirroredGroupMessageId(messageId, fwdMsgId)

@@ -61,6 +61,9 @@ import com.example.ui.Chat
 import com.example.ui.Message
 import com.example.ui.components.extractLightboxMediaItem
 import com.example.ui.formatTime
+import com.example.ui.group.SendAsIdentity
+import com.example.ui.group.SendAsIdentityMenu
+import com.example.ui.group.formatSubscriberCount
 import com.example.ui.media.GifGridTile
 import com.example.ui.media.GifSearchRepository
 import com.example.ui.media.MediaExpressionManager
@@ -141,6 +144,48 @@ fun ChannelPostCommentsScreen(
     var showMediaPanel by remember { mutableStateOf(false) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var showForwardSheet by remember { mutableStateOf(false) }
+    var showSendAsMenu by remember { mutableStateOf(false) }
+
+    val commentSendAsIdentities = remember(
+        canPostAsChannel,
+        activeAccount,
+        channelId,
+        channelTitle,
+        channelCustomization,
+        channelMembers.size
+    ) {
+        if (!canPostAsChannel) {
+            emptyList()
+        } else {
+            val subscriberCount = maxOf(
+                channelCustomization.subscriberCount,
+                channelMembers.size
+            ).coerceAtLeast(1)
+            val currentAccount = activeAccount
+            listOf(
+                SendAsIdentity(
+                    id = currentAccount?.id ?: "me",
+                    type = "PERSONAL",
+                    title = currentAccount?.displayName?.ifBlank {
+                        currentAccount.username.ifBlank { "Вы" }
+                    } ?: "Вы",
+                    subtitle = "личный аккаунт",
+                    avatarUrl = currentAccount?.profilePicUrl?.takeIf { it.isNotBlank() },
+                    emojiStatus = currentAccount?.customStatus?.takeIf { it.isNotBlank() && it.length <= 4 }
+                ),
+                SendAsIdentity(
+                    id = channelId,
+                    type = "CHANNEL",
+                    title = channelTitle,
+                    subtitle = formatSubscriberCount(subscriberCount),
+                    avatarUrl = channelCustomization.avatarUrl,
+                    emojiStatus = channelCustomization.emojiStatus?.takeIf { it.isNotBlank() },
+                    isPrivate = !channelCustomization.isPublic,
+                    customTag = "канал"
+                )
+            )
+        }
+    }
 
     val listState = rememberLazyListState()
 
@@ -463,22 +508,13 @@ fun ChannelPostCommentsScreen(
                                         .padding(horizontal = if (isCompactWidth) 6.dp else 8.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Sender identity switcher badge (Channel default for admins)
+                                    // Sender identity switcher badge (opens Telegram-style Send-As selector menu for admins)
                                     Box(
                                         modifier = Modifier
                                             .size(if (isCompactWidth) 36.dp else 40.dp)
                                             .clip(CircleShape)
                                             .clickable(enabled = canPostAsChannel) {
-                                                isCommentingAsChannel = !isCommentingAsChannel
-                                                Toast.makeText(
-                                                    context,
-                                                    if (isCommentingAsChannel) {
-                                                        "Комментарий от имени канала «$channelTitle»"
-                                                    } else {
-                                                        "Комментарий от Вашего профиля"
-                                                    },
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                                showSendAsMenu = true
                                             }
                                             .testTag("post_comments_sender_switcher"),
                                         contentAlignment = Alignment.Center
@@ -498,6 +534,34 @@ fun ChannelPostCommentsScreen(
                                                 avatarUrl = activeAccount?.profilePicUrl,
                                                 accentColor = CommentsPurple,
                                                 size = badgeAvatarSize
+                                            )
+                                        }
+
+                                        if (commentSendAsIdentities.isNotEmpty()) {
+                                            val selectedCommentIdentity = if (isCommentingAsChannel) {
+                                                commentSendAsIdentities.find { it.type == "CHANNEL" }
+                                            } else {
+                                                commentSendAsIdentities.find { it.type == "PERSONAL" }
+                                            }
+                                            SendAsIdentityMenu(
+                                                expanded = showSendAsMenu,
+                                                identities = commentSendAsIdentities,
+                                                selectedIdentity = selectedCommentIdentity,
+                                                onSelect = { identity ->
+                                                    val nextIsChannel = identity.type == "CHANNEL"
+                                                    isCommentingAsChannel = nextIsChannel
+                                                    showSendAsMenu = false
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (nextIsChannel) {
+                                                            "Комментарий от имени канала «$channelTitle»"
+                                                        } else {
+                                                            "Комментарий от Вашего профиля"
+                                                        },
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                },
+                                                onDismiss = { showSendAsMenu = false }
                                             )
                                         }
                                     }

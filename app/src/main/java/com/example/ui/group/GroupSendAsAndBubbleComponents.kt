@@ -21,6 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -29,7 +32,93 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.data.AvatarStorageManager
+import com.example.data.EntityType
 import org.json.JSONObject
+
+private fun resolveSendAsAvatarUrl(
+    context: android.content.Context,
+    identity: SendAsIdentity
+): String? {
+    val entityType = when (identity.type) {
+        "CHANNEL" -> EntityType.CHANNEL
+        "GROUP" -> EntityType.GROUP
+        else -> EntityType.ACCOUNT
+    }
+    val hasCustomLocal = AvatarStorageManager.hasCustomAvatar(context, entityType, identity.id)
+    return if (hasCustomLocal) {
+        AvatarStorageManager.getAvatar(context, entityType, identity.id, identity.avatarUrl)
+    } else {
+        identity.avatarUrl?.takeIf { it.isNotBlank() }
+    }
+}
+
+private fun sendAsGradientColors(type: String): List<Color> = when (type) {
+    "CHANNEL" -> listOf(Color(0xFF9C5CFF), Color(0xFF536DFE))
+    "GROUP" -> listOf(Color(0xFF2AABEE), Color(0xFF1E88E5))
+    else -> listOf(Color(0xFFFF9800), Color(0xFFFF5722))
+}
+
+private fun sendAsMonogram(identity: SendAsIdentity): String {
+    val count = if (identity.type == "CHANNEL" || identity.type == "GROUP") 2 else 1
+    return identity.title.trim().take(count).ifBlank { "K" }.uppercase()
+}
+
+@Composable
+fun SendAsAvatarButton(
+    identity: SendAsIdentity,
+    avatarSize: Dp = 32.dp,
+    testTag: String = "send_as_avatar_button",
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val resolvedUrl = remember(identity.id, identity.type, identity.avatarUrl) {
+        resolveSendAsAvatarUrl(context, identity)
+    }
+
+    Box(
+        modifier = Modifier
+            .size(maxOf(avatarSize, 48.dp))
+            .clip(CircleShape)
+            .clickable(
+                onClickLabel = "Выбрать профиль для отправки",
+                role = Role.Button,
+                onClick = onClick
+            )
+            .semantics {
+                contentDescription = "Написать от имени: ${identity.title}"
+            }
+            .then(if (testTag.isNotBlank()) Modifier.testTag(testTag) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(avatarSize)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(sendAsGradientColors(identity.type))),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!resolvedUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(resolvedUrl)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = sendAsMonogram(identity),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (avatarSize.value * 0.36f).sp
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun SendAsIdentityMenu(
@@ -57,6 +146,9 @@ fun SendAsIdentityMenu(
 
         identities.forEach { identity ->
             val isSelected = selectedIdentity?.id == identity.id && selectedIdentity.type == identity.type
+            val resolvedUrl = remember(identity.id, identity.type, identity.avatarUrl) {
+                resolveSendAsAvatarUrl(context, identity)
+            }
             DropdownMenuItem(
                 modifier = Modifier.testTag("send_as_option_${identity.type}_${identity.id}"),
                 onClick = { onSelect(identity) },
@@ -70,21 +162,13 @@ fun SendAsIdentityMenu(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        Brush.linearGradient(
-                                            when (identity.type) {
-                                                "CHANNEL" -> listOf(Color(0xFF9C5CFF), Color(0xFF536DFE))
-                                                "GROUP" -> listOf(Color(0xFF2AABEE), Color(0xFF1E88E5))
-                                                else -> listOf(Color(0xFFFF9800), Color(0xFFFF5722))
-                                            }
-                                        )
-                                    ),
+                                    .background(Brush.linearGradient(sendAsGradientColors(identity.type))),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (!identity.avatarUrl.isNullOrBlank()) {
+                                if (!resolvedUrl.isNullOrBlank()) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(context)
-                                            .data(identity.avatarUrl)
+                                            .data(resolvedUrl)
                                             .crossfade(true)
                                             .build(),
                                         contentDescription = identity.title,
@@ -93,10 +177,10 @@ fun SendAsIdentityMenu(
                                     )
                                 } else {
                                     Text(
-                                        text = identity.title.trim().take(1).ifBlank { "K" }.uppercase(),
+                                        text = sendAsMonogram(identity),
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     )
                                 }
                             }
