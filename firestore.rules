@@ -1,0 +1,685 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny all access unless explicitly matched
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Shared Security Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBoundedString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptionalBoundedString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isOptionalBool(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function isOptionalInt(data, field) {
+      return !(field in data) || data[field] is int;
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+               'username', 'display_name', 'balance', 'role',
+               'vip_status', 'vip_expiration', 'available_boost_votes',
+               'allocated_boosts', 'pinned_gifts_count', 'created_at', 'updated_at'
+             ]) &&
+             data.keys().hasOnly([
+               'username', 'display_name', 'balance', 'role',
+               'vip_status', 'vip_expiration', 'available_boost_votes',
+               'allocated_boosts', 'pinned_gifts_count', 'created_at', 'updated_at'
+             ]) &&
+             isBoundedString(data.username, 1, 64) &&
+             isBoundedString(data.display_name, 1, 100) &&
+             data.balance is int && data.balance >= 0 && data.balance <= 100000000 &&
+             data.role in ['user', 'moderator', 'admin', 'developer'] &&
+             data.vip_status is bool &&
+             data.vip_expiration is int && data.vip_expiration >= 0 &&
+             data.available_boost_votes is int && data.available_boost_votes >= 0 && data.available_boost_votes <= 1000 &&
+             data.allocated_boosts is list && data.allocated_boosts.size() <= 50 &&
+             (data.allocated_boosts.size() == 0 || data.allocated_boosts[0] is map) &&
+             data.pinned_gifts_count is int && data.pinned_gifts_count >= 0 && data.pinned_gifts_count <= 12 &&
+             data.created_at is int && data.created_at > 0 &&
+             data.updated_at is int && data.updated_at > 0;
+    }
+
+    function isValidPresence(data) {
+      return data.keys().hasAll(['isOnline', 'lastActive', 'updatedAt']) &&
+             data.keys().hasOnly(['isOnline', 'lastActive', 'updatedAt']) &&
+             data.isOnline is bool &&
+             data.lastActive is int && data.lastActive > 0 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidChat(data) {
+      return data.keys().hasOnly([
+               'id', 'title', 'name', 'participants', 'participantNames',
+               'lastMessage', 'lastMessageTimestamp', 'lastSenderId', 'unreadCounts',
+               'typingUsers', 'isDirect', 'isGroup', 'isChannel', 'isMuted',
+               'isArchived', 'pinnedMessageId',
+               'linked_discussion_group_id', 'linked_discussion_group_title',
+               'linkedDiscussionGroupId', 'linkedDiscussionGroupTitle',
+               'discussion_only_members_can_send', 'discussion_join_requests_required',
+               'linkedChannelId', 'linkedChannelTitle',
+               'createdAt', 'updatedAt', 'updated_at'
+             ]) &&
+             isOptionalBoundedString(data, 'id', 128) &&
+             isOptionalBoundedString(data, 'title', 200) &&
+             isOptionalBoundedString(data, 'name', 200) &&
+             (!('participants' in data) || (
+               data.participants is list &&
+               data.participants.size() >= 1 &&
+               data.participants.size() <= 100 &&
+               (data.participants.size() == 0 || data.participants[0] is string)
+             )) &&
+             (!('participantNames' in data) || data.participantNames is map) &&
+             isOptionalBoundedString(data, 'lastMessage', 4000) &&
+             (!('lastMessageTimestamp' in data) || (data.lastMessageTimestamp is int && data.lastMessageTimestamp >= 0)) &&
+             isOptionalBoundedString(data, 'lastSenderId', 128) &&
+             (!('unreadCounts' in data) || data.unreadCounts is map) &&
+             (!('typingUsers' in data) || (
+               data.typingUsers is list &&
+               data.typingUsers.size() <= 50 &&
+               (data.typingUsers.size() == 0 || data.typingUsers[0] is string)
+             )) &&
+             isOptionalBool(data, 'isDirect') &&
+             isOptionalBool(data, 'isGroup') &&
+             isOptionalBool(data, 'isChannel') &&
+             isOptionalBool(data, 'isMuted') &&
+             isOptionalBool(data, 'isArchived') &&
+             isOptionalBoundedString(data, 'pinnedMessageId', 128) &&
+             isOptionalBoundedString(data, 'linked_discussion_group_id', 128) &&
+             isOptionalBoundedString(data, 'linked_discussion_group_title', 200) &&
+             isOptionalBoundedString(data, 'linkedDiscussionGroupId', 128) &&
+             isOptionalBoundedString(data, 'linkedDiscussionGroupTitle', 200) &&
+             isOptionalBool(data, 'discussion_only_members_can_send') &&
+             isOptionalBool(data, 'discussion_join_requests_required') &&
+             isOptionalBoundedString(data, 'linkedChannelId', 128) &&
+             isOptionalBoundedString(data, 'linkedChannelTitle', 200) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time)) &&
+             (!('updated_at' in data) || (data.updated_at is timestamp && data.updated_at <= request.time));
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['chatId', 'senderId', 'text', 'timestamp', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'chatId', 'senderId', 'receiverId', 'text',
+               'audioPath', 'mediaPath', 'mediaType', 'documentData', 'locationData',
+               'replyToMessageId', 'replyToMessageText',
+               'isPinned', 'isForwarded', 'forwardOriginalSenderId', 'forwardOriginalSenderName',
+               'senderIdentityId', 'senderIdentityType', 'senderDisplayName',
+               'senderAvatarUrl', 'senderCustomTag', 'senderEmojiStatus',
+               'reaction', 'timestamp', 'expiresAt', 'isDelivered', 'isRead', 'createdAt'
+             ]) &&
+             isOptionalBoundedString(data, 'id', 128) &&
+             isBoundedString(data.chatId, 1, 128) &&
+             isBoundedString(data.senderId, 1, 128) &&
+             isOptionalBoundedString(data, 'receiverId', 128) &&
+             isBoundedString(data.text, 0, 10000) &&
+             isOptionalBoundedString(data, 'audioPath', 500) &&
+             isOptionalBoundedString(data, 'mediaPath', 500) &&
+             isOptionalBoundedString(data, 'mediaType', 64) &&
+             isOptionalBoundedString(data, 'documentData', 2000) &&
+             isOptionalBoundedString(data, 'locationData', 500) &&
+             isOptionalBoundedString(data, 'replyToMessageId', 128) &&
+             isOptionalBoundedString(data, 'replyToMessageText', 500) &&
+             isOptionalBool(data, 'isPinned') &&
+             isOptionalBool(data, 'isForwarded') &&
+             isOptionalBoundedString(data, 'forwardOriginalSenderId', 128) &&
+             isOptionalBoundedString(data, 'forwardOriginalSenderName', 100) &&
+             isOptionalBoundedString(data, 'senderIdentityId', 128) &&
+             isOptionalBoundedString(data, 'senderIdentityType', 64) &&
+             isOptionalBoundedString(data, 'senderDisplayName', 100) &&
+             isOptionalBoundedString(data, 'senderAvatarUrl', 500) &&
+             isOptionalBoundedString(data, 'senderCustomTag', 64) &&
+             isOptionalBoundedString(data, 'senderEmojiStatus', 64) &&
+             isOptionalBoundedString(data, 'reaction', 64) &&
+             data.timestamp is int && data.timestamp >= 0 &&
+             (!('expiresAt' in data) || (data.expiresAt is int && data.expiresAt >= 0)) &&
+             isOptionalBool(data, 'isDelivered') &&
+             isOptionalBool(data, 'isRead') &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidTyping(data) {
+      return data.keys().hasAll(['isTyping', 'timestamp']) &&
+             data.keys().hasOnly(['isTyping', 'timestamp']) &&
+             data.isTyping is bool &&
+             data.timestamp is timestamp && data.timestamp <= request.time;
+    }
+
+    function isValidChannel(data) {
+      return data.keys().hasOnly([
+               'id', 'title', 'isChannel',
+               'linked_discussion_group_id', 'linked_discussion_group_title',
+               'linkedDiscussionGroupId', 'linkedDiscussionGroupTitle',
+               'discussion_only_members_can_send', 'discussion_join_requests_required',
+               'current_votes', 'level', 'next_level_required_votes',
+               'custom_color_unlocked', 'status_emoji_unlocked',
+               'wallpaper_unlocked', 'stories_per_day_limit', 'updated_at'
+             ]) &&
+             isOptionalBoundedString(data, 'id', 128) &&
+             isOptionalBoundedString(data, 'title', 200) &&
+             isOptionalBool(data, 'isChannel') &&
+             isOptionalBoundedString(data, 'linked_discussion_group_id', 128) &&
+             isOptionalBoundedString(data, 'linked_discussion_group_title', 200) &&
+             isOptionalBoundedString(data, 'linkedDiscussionGroupId', 128) &&
+             isOptionalBoundedString(data, 'linkedDiscussionGroupTitle', 200) &&
+             isOptionalBool(data, 'discussion_only_members_can_send') &&
+             isOptionalBool(data, 'discussion_join_requests_required') &&
+             (!('current_votes' in data) || (data.current_votes is int && data.current_votes >= 0 && data.current_votes <= 1000000)) &&
+             (!('level' in data) || (data.level is int && data.level >= 0 && data.level <= 10)) &&
+             (!('next_level_required_votes' in data) || (data.next_level_required_votes is int && data.next_level_required_votes >= 0)) &&
+             isOptionalBool(data, 'custom_color_unlocked') &&
+             isOptionalBool(data, 'status_emoji_unlocked') &&
+             isOptionalBool(data, 'wallpaper_unlocked') &&
+             (!('stories_per_day_limit' in data) || (data.stories_per_day_limit is int && data.stories_per_day_limit >= 0 && data.stories_per_day_limit <= 500)) &&
+             (!('updated_at' in data) || (
+               (data.updated_at is timestamp && data.updated_at <= request.time) ||
+               (data.updated_at is int && data.updated_at > 0)
+             ));
+    }
+
+    function isValidChannelPost(data) {
+      return data.keys().hasAll(['postId', 'channelId', 'commentCount', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'postId', 'channelId', 'commentCount',
+               'mirroredGroupId', 'mirroredGroupMessageId', 'updatedAt'
+             ]) &&
+             isBoundedString(data.postId, 1, 128) &&
+             isBoundedString(data.channelId, 1, 128) &&
+             data.commentCount is int && data.commentCount >= 0 && data.commentCount <= 1000000 &&
+             isOptionalBoundedString(data, 'mirroredGroupId', 128) &&
+             isOptionalBoundedString(data, 'mirroredGroupMessageId', 128) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidChannelComment(data) {
+      return data.keys().hasAll(['channelId', 'postId', 'senderId', 'senderName', 'text', 'timestamp', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'channelId', 'postId', 'senderId', 'senderName', 'senderAvatarUrl',
+               'isChannelIdentity', 'text', 'mediaPath', 'mediaType', 'documentData',
+               'replyToCommentId', 'replyToAuthorName', 'replyToSnippet',
+               'mirroredGroupId', 'mirroredGroupPostId', 'mirroredGroupReplyId',
+               'timestamp', 'createdAt'
+             ]) &&
+             isOptionalBoundedString(data, 'id', 128) &&
+             isBoundedString(data.channelId, 1, 128) &&
+             isBoundedString(data.postId, 1, 128) &&
+             isBoundedString(data.senderId, 1, 128) &&
+             isBoundedString(data.senderName, 1, 100) &&
+             isOptionalBoundedString(data, 'senderAvatarUrl', 500) &&
+             isOptionalBool(data, 'isChannelIdentity') &&
+             isBoundedString(data.text, 0, 5000) &&
+             isOptionalBoundedString(data, 'mediaPath', 500) &&
+             isOptionalBoundedString(data, 'mediaType', 64) &&
+             isOptionalBoundedString(data, 'documentData', 2000) &&
+             isOptionalBoundedString(data, 'replyToCommentId', 128) &&
+             isOptionalBoundedString(data, 'replyToAuthorName', 100) &&
+             isOptionalBoundedString(data, 'replyToSnippet', 500) &&
+             isOptionalBoundedString(data, 'mirroredGroupId', 128) &&
+             isOptionalBoundedString(data, 'mirroredGroupPostId', 128) &&
+             isOptionalBoundedString(data, 'mirroredGroupReplyId', 128) &&
+             data.timestamp is int && data.timestamp > 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidCatalogGift(data) {
+      return data.keys().hasAll(['title', 'price', 'total_supply', 'available_supply', 'created_at']) &&
+             data.keys().hasOnly([
+               'title', 'price', 'total_supply', 'available_supply',
+               'is_exclusive', 'lottie_asset_url', 'backdrop_color_hex',
+               'emoji_icon', 'max_upgrade_level', 'created_at'
+             ]) &&
+             isBoundedString(data.title, 1, 100) &&
+             data.price is int && data.price > 0 && data.price <= 10000000 &&
+             data.total_supply is int && data.total_supply >= -1 &&
+             data.available_supply is int && data.available_supply >= -1 &&
+             (data.total_supply == -1 || data.available_supply <= data.total_supply) &&
+             isOptionalBool(data, 'is_exclusive') &&
+             isOptionalBoundedString(data, 'lottie_asset_url', 200) &&
+             isOptionalBoundedString(data, 'backdrop_color_hex', 32) &&
+             isOptionalBoundedString(data, 'emoji_icon', 32) &&
+             isOptionalInt(data, 'max_upgrade_level') &&
+             data.created_at is int && data.created_at > 0;
+    }
+
+    function isValidUserGift(data) {
+      return data.keys().hasAll(['catalog_gift_id', 'sender_id', 'receiver_id', 'is_pinned_to_header', 'upgrade_level', 'acquired_at']) &&
+             data.keys().hasOnly([
+               'catalog_gift_id', 'sender_id', 'receiver_id',
+               'is_pinned_to_header', 'pin_order_index', 'upgrade_level',
+               'transferable', 'message', 'is_anonymous', 'acquired_at',
+               'cached_title', 'cached_emoji', 'cached_color_hex'
+             ]) &&
+             isBoundedString(data.catalog_gift_id, 1, 128) &&
+             isBoundedString(data.sender_id, 1, 128) &&
+             isBoundedString(data.receiver_id, 1, 128) &&
+             data.is_pinned_to_header is bool &&
+             isOptionalInt(data, 'pin_order_index') &&
+             data.upgrade_level is int && data.upgrade_level >= 1 && data.upgrade_level <= 10 &&
+             isOptionalBool(data, 'transferable') &&
+             isOptionalBoundedString(data, 'message', 500) &&
+             isOptionalBool(data, 'is_anonymous') &&
+             data.acquired_at is int && data.acquired_at > 0 &&
+             isOptionalBoundedString(data, 'cached_title', 100) &&
+             isOptionalBoundedString(data, 'cached_emoji', 32) &&
+             isOptionalBoundedString(data, 'cached_color_hex', 32);
+    }
+
+    function isValidLedgerTx(data) {
+      return data.keys().hasAll(['idempotency_key', 'type', 'from_user_id', 'to_user_id', 'amount', 'status', 'created_at']) &&
+             data.keys().hasOnly([
+               'idempotency_key', 'type', 'from_user_id', 'to_user_id',
+               'amount', 'fee', 'status', 'metadata', 'created_at'
+             ]) &&
+             isBoundedString(data.idempotency_key, 1, 128) &&
+             data.type in ['GIFT_PURCHASE', 'GIFT_UPGRADE', 'VIP_SUBSCRIPTION', 'BALANCE_TOPUP', 'CHANNEL_BOOST', 'DIRECT_MESSAGE_STAR', 'REWARD'] &&
+             isBoundedString(data.from_user_id, 1, 128) &&
+             isBoundedString(data.to_user_id, 1, 128) &&
+             data.amount is int && data.amount >= 0 && data.amount <= 100000000 &&
+             (!('fee' in data) || (data.fee is int && data.fee >= 0)) &&
+             data.status in ['COMMITTED', 'PENDING', 'FAILED'] &&
+             (!('metadata' in data) || data.metadata is map) &&
+             data.created_at is int && data.created_at > 0;
+    }
+
+    function isValidIdempotencyKey(data) {
+      return data.keys().hasAll(['tx_id', 'user_id', 'created_at']) &&
+             data.keys().hasOnly(['tx_id', 'user_id', 'created_at']) &&
+             isBoundedString(data.tx_id, 1, 128) &&
+             isBoundedString(data.user_id, 1, 128) &&
+             data.created_at is int && data.created_at > 0;
+    }
+
+    function isValidPollVote(data) {
+      return data.keys().hasAll(['poll_id', 'chat_id', 'user_id', 'selected_option_ids', 'timestamp']) &&
+             data.keys().hasOnly(['poll_id', 'chat_id', 'user_id', 'selected_option_ids', 'timestamp']) &&
+             isBoundedString(data.poll_id, 1, 128) &&
+             isBoundedString(data.chat_id, 1, 128) &&
+             isBoundedString(data.user_id, 1, 128) &&
+             data.selected_option_ids is list &&
+             data.selected_option_ids.size() >= 1 &&
+             data.selected_option_ids.size() <= 10 &&
+             data.selected_option_ids[0] is int &&
+             data.timestamp is int && data.timestamp > 0;
+    }
+
+    // --- Collection Rules ---
+
+    // 1. User Ecosystem Accounts (/users/{userId})
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().role == 'user' &&
+                       incoming().balance <= 1000;
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().role == existing().role &&
+                       incoming().created_at == existing().created_at &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'username', 'display_name', 'balance', 'vip_status',
+                         'vip_expiration', 'available_boost_votes', 'allocated_boosts',
+                         'pinned_gifts_count', 'updated_at'
+                       ]);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Presence Subcollection (/users/{userId}/presence/{statusId})
+      match /presence/{statusId} {
+        allow get: if isSignedIn() && isValidId(statusId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(statusId) &&
+                         isValidPresence(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(statusId) &&
+                         isValidPresence(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['isOnline', 'lastActive', 'updatedAt']);
+
+        allow delete: if false;
+      }
+    }
+
+    // 2. Chats & Conversations (/chats/{chatId})
+    match /chats/{chatId} {
+      allow list: if isSignedIn() &&
+                     ('participants' in existing()) &&
+                     request.auth.uid in existing().participants;
+
+      allow get: if isSignedIn() && isValidId(chatId) && (
+                   (('participants' in existing()) && request.auth.uid in existing().participants) ||
+                   (!('participants' in existing()) && existing().get('isChannel', false) == true)
+                 );
+
+      allow create: if isSignedIn() &&
+                       isValidId(chatId) &&
+                       isValidChat(incoming()) && (
+                         (('participants' in incoming()) && request.auth.uid in incoming().participants) ||
+                         (!('participants' in incoming()) && (
+                           incoming().get('isChannel', false) == true ||
+                           incoming().get('isGroup', false) == true
+                         ))
+                       );
+
+      allow update: if isSignedIn() &&
+                       isValidId(chatId) &&
+                       isValidChat(incoming()) &&
+                       (!('id' in existing()) || incoming().id == existing().id) &&
+                       (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+                       (!('participants' in existing()) || incoming().participants == existing().participants) && (
+                         // Branch A: Chat Participant updates conversation state / counters
+                         (('participants' in existing()) &&
+                          request.auth.uid in existing().participants &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'id', 'title', 'name', 'isChannel', 'isGroup',
+                            'lastMessage', 'lastMessageTimestamp', 'lastSenderId',
+                            'unreadCounts', 'typingUsers', 'isMuted', 'isArchived', 'pinnedMessageId',
+                            'updatedAt', 'updated_at',
+                            'linked_discussion_group_id', 'linked_discussion_group_title',
+                            'linkedDiscussionGroupId', 'linkedDiscussionGroupTitle',
+                            'discussion_only_members_can_send', 'discussion_join_requests_required',
+                            'linkedChannelId', 'linkedChannelTitle'
+                          ])) ||
+                         // Branch B: Linked channel/group metadata doc without participants list
+                         (!('participants' in existing()) &&
+                          (existing().get('isChannel', false) == true || existing().get('isGroup', false) == true) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'id', 'title', 'isChannel', 'isGroup',
+                            'pinnedMessageId', 'updated_at',
+                            'linked_discussion_group_id', 'linked_discussion_group_title',
+                            'linkedDiscussionGroupId', 'linkedDiscussionGroupTitle',
+                            'discussion_only_members_can_send', 'discussion_join_requests_required',
+                            'linkedChannelId', 'linkedChannelTitle'
+                          ]))
+                       );
+
+      allow delete: if false;
+
+      // Messages Subcollection (/chats/{chatId}/messages/{messageId})
+      match /messages/{messageId} {
+        allow get, list: if isSignedIn() &&
+                            exists(/databases/$(database)/documents/chats/$(chatId)) && (
+                              (('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                               request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants) ||
+                              (!('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                               get(/databases/$(database)/documents/chats/$(chatId)).data.get('isGroup', false) == true)
+                            );
+
+        allow create: if isSignedIn() &&
+                         isValidId(chatId) &&
+                         isValidId(messageId) &&
+                         isValidMessage(incoming()) &&
+                         incoming().chatId == chatId &&
+                         incoming().senderId == request.auth.uid &&
+                         existsAfter(/databases/$(database)/documents/chats/$(chatId)) && (
+                           (('participants' in getAfter(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                            request.auth.uid in getAfter(/databases/$(database)/documents/chats/$(chatId)).data.participants) ||
+                           (!('participants' in getAfter(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                            getAfter(/databases/$(database)/documents/chats/$(chatId)).data.get('isGroup', false) == true)
+                         );
+
+        allow update: if isSignedIn() &&
+                         isValidId(chatId) &&
+                         isValidId(messageId) &&
+                         isValidMessage(incoming()) &&
+                         incoming().chatId == existing().chatId &&
+                         incoming().senderId == existing().senderId &&
+                         incoming().createdAt == existing().createdAt &&
+                         exists(/databases/$(database)/documents/chats/$(chatId)) && (
+                           (('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                            request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants) ||
+                           (!('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                            get(/databases/$(database)/documents/chats/$(chatId)).data.get('isGroup', false) == true)
+                         ) && (
+                           // Branch A: Any participant marks message read
+                           incoming().diff(existing()).affectedKeys().hasOnly(['isRead']) ||
+                           // Branch B: Any participant sets/removes reaction
+                           incoming().diff(existing()).affectedKeys().hasOnly(['reaction']) ||
+                           // Branch C: Original sender updates message text/pin/delivery state
+                           (existing().senderId == request.auth.uid &&
+                            incoming().diff(existing()).affectedKeys().hasOnly([
+                              'text', 'isPinned', 'isDelivered', 'reaction'
+                            ]))
+                         );
+
+        allow delete: if isSignedIn() &&
+                         isValidId(chatId) &&
+                         isValidId(messageId) &&
+                         existing().senderId == request.auth.uid &&
+                         exists(/databases/$(database)/documents/chats/$(chatId)) &&
+                         ('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                         request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+      }
+
+      // Typing Indicators (/chats/{chatId}/typing/{userId})
+      match /typing/{userId} {
+        allow get: if isSignedIn() &&
+                      isValidId(chatId) &&
+                      isValidId(userId) &&
+                      exists(/databases/$(database)/documents/chats/$(chatId)) &&
+                      ('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                      request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+
+        allow list: if false;
+
+        allow create, update: if isOwner(userId) &&
+                                 isValidId(chatId) &&
+                                 isValidId(userId) &&
+                                 isValidTyping(incoming()) &&
+                                 exists(/databases/$(database)/documents/chats/$(chatId)) &&
+                                 ('participants' in get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+                                 request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+
+        allow delete: if false;
+      }
+    }
+
+    // 3. Channels, Boost Levels & Discussion Posts (/channels/{channelId})
+    match /channels/{channelId} {
+      allow get: if isSignedIn() && isValidId(channelId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       isValidChannel(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       isValidChannel(incoming()) && (
+                         // Branch A: Discussion link settings mutation
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'id', 'title', 'isChannel',
+                           'linked_discussion_group_id', 'linked_discussion_group_title',
+                           'linkedDiscussionGroupId', 'linkedDiscussionGroupTitle',
+                           'discussion_only_members_can_send', 'discussion_join_requests_required',
+                           'updated_at'
+                         ]) ||
+                         // Branch B: Channel boost vote increment
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'current_votes', 'level', 'next_level_required_votes',
+                           'custom_color_unlocked', 'status_emoji_unlocked',
+                           'wallpaper_unlocked', 'stories_per_day_limit', 'updated_at'
+                         ])
+                       );
+
+      allow delete: if false;
+
+      match /posts/{postId} {
+        allow get: if isSignedIn() && isValidId(channelId) && isValidId(postId);
+        allow list: if false;
+
+        allow create, update: if isSignedIn() &&
+                                 isValidId(channelId) &&
+                                 isValidId(postId) &&
+                                 isValidChannelPost(incoming()) &&
+                                 incoming().channelId == channelId &&
+                                 incoming().postId == postId;
+
+        allow delete: if false;
+
+        match /comments/{commentId} {
+          allow get, list: if isSignedIn() &&
+                              exists(/databases/$(database)/documents/channels/$(channelId)/posts/$(postId));
+
+          allow create: if isSignedIn() &&
+                           isValidId(channelId) &&
+                           isValidId(postId) &&
+                           isValidId(commentId) &&
+                           isValidChannelComment(incoming()) &&
+                           incoming().channelId == channelId &&
+                           incoming().postId == postId &&
+                           incoming().senderId == request.auth.uid &&
+                           exists(/databases/$(database)/documents/channels/$(channelId)/posts/$(postId));
+
+          allow update: if isSignedIn() &&
+                           isValidId(channelId) &&
+                           isValidId(postId) &&
+                           isValidId(commentId) &&
+                           isValidChannelComment(incoming()) &&
+                           existing().senderId == request.auth.uid &&
+                           incoming().senderId == existing().senderId &&
+                           incoming().createdAt == existing().createdAt &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'text', 'mirroredGroupReplyId'
+                           ]);
+
+          allow delete: if isSignedIn() &&
+                           isValidId(channelId) &&
+                           isValidId(postId) &&
+                           isValidId(commentId) &&
+                           existing().senderId == request.auth.uid;
+        }
+      }
+    }
+
+    // 4. Gifts Catalog (/gifts_catalog/{catalogGiftId})
+    match /gifts_catalog/{catalogGiftId} {
+      allow get: if isSignedIn() && isValidId(catalogGiftId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(catalogGiftId) &&
+                       isValidCatalogGift(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(catalogGiftId) &&
+                       isValidCatalogGift(incoming()) &&
+                       incoming().created_at == existing().created_at &&
+                       incoming().price == existing().price &&
+                       incoming().total_supply == existing().total_supply &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['available_supply']) &&
+                       existing().available_supply > 0 &&
+                       incoming().available_supply == existing().available_supply - 1;
+
+      allow delete: if false;
+    }
+
+    // 5. User Gifts (/user_gifts/{userGiftId})
+    match /user_gifts/{userGiftId} {
+      allow get, list: if isSignedIn() && (
+                         existing().receiver_id == request.auth.uid ||
+                         existing().sender_id == request.auth.uid ||
+                         existing().is_pinned_to_header == true
+                       );
+
+      allow create: if isSignedIn() &&
+                       isValidId(userGiftId) &&
+                       isValidUserGift(incoming()) &&
+                       (incoming().is_anonymous == true
+                         ? incoming().sender_id == 'anonymous'
+                         : incoming().sender_id == request.auth.uid);
+
+      allow update: if isSignedIn() &&
+                       isValidId(userGiftId) &&
+                       isValidUserGift(incoming()) &&
+                       existing().receiver_id == request.auth.uid &&
+                       incoming().sender_id == existing().sender_id &&
+                       incoming().receiver_id == existing().receiver_id &&
+                       incoming().acquired_at == existing().acquired_at &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'upgrade_level', 'transferable', 'is_pinned_to_header', 'pin_order_index'
+                       ]);
+
+      allow delete: if false;
+    }
+
+    // 6. Immutable Ledger Transactions (/ledger_transactions/{txId})
+    match /ledger_transactions/{txId} {
+      allow get, list: if isSignedIn() && (
+                         existing().from_user_id == request.auth.uid ||
+                         existing().to_user_id == request.auth.uid
+                       );
+
+      allow create: if isSignedIn() &&
+                       isValidId(txId) &&
+                       isValidLedgerTx(incoming()) && (
+                         incoming().from_user_id == request.auth.uid ||
+                         incoming().to_user_id == request.auth.uid
+                       );
+
+      allow update, delete: if false;
+    }
+
+    // 7. Idempotency Keys (/idempotency_keys/{keyId})
+    match /idempotency_keys/{keyId} {
+      allow get: if isSignedIn() && isValidId(keyId) && existing().user_id == request.auth.uid;
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(keyId) &&
+                       isValidIdempotencyKey(incoming()) &&
+                       incoming().user_id == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    // 8. Poll Votes (/poll_votes/{voteId})
+    match /poll_votes/{voteId} {
+      allow get, list: if isSignedIn() && existing().user_id == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(voteId) &&
+                       isValidPollVote(incoming()) &&
+                       incoming().user_id == request.auth.uid &&
+                       voteId == incoming().poll_id + '_' + request.auth.uid;
+
+      allow update, delete: if false;
+    }
+  }
+}

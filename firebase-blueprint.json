@@ -1,0 +1,315 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User ecosystem account document storing balance, role, VIP status, and boost allocations.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "User handle" },
+        "display_name": { "type": "string", "description": "Public display name" },
+        "balance": { "type": "integer", "description": "KuoteX Stars internal currency balance" },
+        "role": { "type": "string", "enum": ["user", "moderator", "admin", "developer"], "description": "User ecosystem role" },
+        "vip_status": { "type": "boolean", "description": "Whether VIP subscription is active" },
+        "vip_expiration": { "type": "integer", "description": "VIP expiration epoch millis" },
+        "available_boost_votes": { "type": "integer", "description": "Remaining channel boost votes" },
+        "allocated_boosts": { "type": "array", "description": "Allocated channel boost entries" },
+        "pinned_gifts_count": { "type": "integer", "description": "Count of gifts pinned to profile header" },
+        "created_at": { "type": "integer", "description": "Creation epoch millis" },
+        "updated_at": { "type": "integer", "description": "Last update epoch millis" }
+      },
+      "required": ["username", "display_name", "balance", "role", "vip_status", "created_at", "updated_at"]
+    },
+    "UserPresence": {
+      "title": "UserPresence",
+      "description": "User online/last-active presence status.",
+      "type": "object",
+      "properties": {
+        "isOnline": { "type": "boolean", "description": "Online flag" },
+        "lastActive": { "type": "integer", "description": "Last active epoch millis" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of update" }
+      },
+      "required": ["isOnline", "lastActive", "updatedAt"]
+    },
+    "ChatConversation": {
+      "title": "ChatConversation",
+      "description": "Direct, group, or channel conversation document with participants and sync metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Chat identifier" },
+        "title": { "type": "string", "description": "Conversation title" },
+        "name": { "type": "string", "description": "Alternate conversation title" },
+        "participants": { "type": "array", "description": "List of participant user UIDs" },
+        "participantNames": { "type": "object", "description": "Map of UID to display name" },
+        "lastMessage": { "type": "string", "description": "Last message preview" },
+        "lastMessageTimestamp": { "type": "integer", "description": "Last message epoch millis" },
+        "lastSenderId": { "type": "string", "description": "Last sender UID" },
+        "unreadCounts": { "type": "object", "description": "Map of UID to unread counter" },
+        "typingUsers": { "type": "array", "description": "Currently typing UIDs" },
+        "isDirect": { "type": "boolean", "description": "Direct 1:1 chat flag" },
+        "isGroup": { "type": "boolean", "description": "Group chat flag" },
+        "isChannel": { "type": "boolean", "description": "Channel flag" },
+        "isMuted": { "type": "boolean", "description": "Muted flag" },
+        "isArchived": { "type": "boolean", "description": "Archived flag" },
+        "pinnedMessageId": { "type": "string", "description": "Pinned message ID" },
+        "linked_discussion_group_id": { "type": "string", "description": "Linked group ID (snake_case)" },
+        "linked_discussion_group_title": { "type": "string", "description": "Linked group title (snake_case)" },
+        "linkedDiscussionGroupId": { "type": "string", "description": "Linked group ID" },
+        "linkedDiscussionGroupTitle": { "type": "string", "description": "Linked group title" },
+        "discussion_only_members_can_send": { "type": "boolean", "description": "Discussion member send gate" },
+        "discussion_join_requests_required": { "type": "boolean", "description": "Discussion join request flag" },
+        "linkedChannelId": { "type": "string", "description": "Linked channel ID for discussion group" },
+        "linkedChannelTitle": { "type": "string", "description": "Linked channel title for discussion group" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server update timestamp" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Server update timestamp (snake_case)" }
+      },
+      "required": ["lastMessage", "lastMessageTimestamp"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message inside a chat conversation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Message identifier" },
+        "chatId": { "type": "string", "description": "Parent chat identifier" },
+        "senderId": { "type": "string", "description": "Sender UID" },
+        "receiverId": { "type": "string", "description": "Receiver UID in direct chats" },
+        "text": { "type": "string", "description": "Message text payload" },
+        "audioPath": { "type": "string", "description": "Audio attachment path" },
+        "mediaPath": { "type": "string", "description": "Media attachment path" },
+        "mediaType": { "type": "string", "description": "Media MIME/type descriptor" },
+        "documentData": { "type": "string", "description": "Document attachment metadata" },
+        "locationData": { "type": "string", "description": "Location attachment coordinates" },
+        "replyToMessageId": { "type": "string", "description": "Replied message ID" },
+        "replyToMessageText": { "type": "string", "description": "Replied message snippet" },
+        "isPinned": { "type": "boolean", "description": "Pinned state" },
+        "isForwarded": { "type": "boolean", "description": "Forwarded flag" },
+        "forwardOriginalSenderId": { "type": "string", "description": "Original sender UID" },
+        "forwardOriginalSenderName": { "type": "string", "description": "Original sender display name" },
+        "senderIdentityId": { "type": "string", "description": "Effective sender identity ID" },
+        "senderIdentityType": { "type": "string", "description": "Effective sender identity type" },
+        "senderDisplayName": { "type": "string", "description": "Sender display name" },
+        "senderAvatarUrl": { "type": "string", "description": "Sender avatar URL" },
+        "senderCustomTag": { "type": "string", "description": "Sender custom tag" },
+        "senderEmojiStatus": { "type": "string", "description": "Sender emoji status" },
+        "reaction": { "type": "string", "description": "Emoji reaction" },
+        "timestamp": { "type": "integer", "description": "Message epoch millis" },
+        "expiresAt": { "type": "integer", "description": "Disappearing message expiry epoch millis" },
+        "isDelivered": { "type": "boolean", "description": "Delivery state" },
+        "isRead": { "type": "boolean", "description": "Read receipt state" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server creation timestamp" }
+      },
+      "required": ["chatId", "senderId", "text", "timestamp", "createdAt"]
+    },
+    "TypingStatus": {
+      "title": "TypingStatus",
+      "description": "Real-time typing indicator for a participant inside a chat.",
+      "type": "object",
+      "properties": {
+        "isTyping": { "type": "boolean", "description": "Whether the participant is typing" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Server update timestamp" }
+      },
+      "required": ["isTyping", "timestamp"]
+    },
+    "ChannelDocument": {
+      "title": "ChannelDocument",
+      "description": "Channel metadata, boost progression, and linked discussion group settings.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Channel identifier" },
+        "title": { "type": "string", "description": "Channel title" },
+        "isChannel": { "type": "boolean", "description": "Channel marker" },
+        "linked_discussion_group_id": { "type": "string", "description": "Linked discussion group ID (snake_case)" },
+        "linked_discussion_group_title": { "type": "string", "description": "Linked discussion group title (snake_case)" },
+        "linkedDiscussionGroupId": { "type": "string", "description": "Linked discussion group ID" },
+        "linkedDiscussionGroupTitle": { "type": "string", "description": "Linked discussion group title" },
+        "discussion_only_members_can_send": { "type": "boolean", "description": "Only members can send in discussion" },
+        "discussion_join_requests_required": { "type": "boolean", "description": "Join requests required flag" },
+        "current_votes": { "type": "integer", "description": "Total active boost votes" },
+        "level": { "type": "integer", "description": "Unlocked boost level" },
+        "next_level_required_votes": { "type": "integer", "description": "Votes needed for next level" },
+        "custom_color_unlocked": { "type": "boolean", "description": "Level perk flag" },
+        "status_emoji_unlocked": { "type": "boolean", "description": "Level perk flag" },
+        "wallpaper_unlocked": { "type": "boolean", "description": "Level perk flag" },
+        "stories_per_day_limit": { "type": "integer", "description": "Unlocked daily story quota" },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Server update timestamp" }
+      },
+      "required": []
+    },
+    "ChannelPost": {
+      "title": "ChannelPost",
+      "description": "Channel post discussion tracking metadata.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "description": "Post identifier" },
+        "channelId": { "type": "string", "description": "Channel identifier" },
+        "commentCount": { "type": "integer", "description": "Comment counter" },
+        "mirroredGroupId": { "type": "string", "description": "Mirrored discussion group ID" },
+        "mirroredGroupMessageId": { "type": "string", "description": "Mirrored group message ID" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server update timestamp" }
+      },
+      "required": ["postId", "channelId", "commentCount", "updatedAt"]
+    },
+    "ChannelComment": {
+      "title": "ChannelComment",
+      "description": "User or channel-identity comment on a channel post.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Comment identifier" },
+        "channelId": { "type": "string", "description": "Parent channel ID" },
+        "postId": { "type": "string", "description": "Parent post ID" },
+        "senderId": { "type": "string", "description": "Author UID" },
+        "senderName": { "type": "string", "description": "Author display name" },
+        "senderAvatarUrl": { "type": "string", "description": "Author avatar URL" },
+        "isChannelIdentity": { "type": "boolean", "description": "Posted as channel flag" },
+        "text": { "type": "string", "description": "Comment body" },
+        "mediaPath": { "type": "string", "description": "Attachment path" },
+        "mediaType": { "type": "string", "description": "Attachment type" },
+        "documentData": { "type": "string", "description": "Document data" },
+        "replyToCommentId": { "type": "string", "description": "Parent comment ID" },
+        "replyToAuthorName": { "type": "string", "description": "Replied author name" },
+        "replyToSnippet": { "type": "string", "description": "Replied text snippet" },
+        "mirroredGroupId": { "type": "string", "description": "Mirrored group ID" },
+        "mirroredGroupPostId": { "type": "string", "description": "Mirrored post ID" },
+        "mirroredGroupReplyId": { "type": "string", "description": "Mirrored reply ID" },
+        "timestamp": { "type": "integer", "description": "Comment epoch millis" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server creation timestamp" }
+      },
+      "required": ["channelId", "postId", "senderId", "senderName", "text", "timestamp", "createdAt"]
+    },
+    "CatalogGift": {
+      "title": "CatalogGift",
+      "description": "Store catalog gift definition and supply counter.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Gift display title" },
+        "price": { "type": "integer", "description": "Cost in Stars" },
+        "total_supply": { "type": "integer", "description": "Total minted supply or -1" },
+        "available_supply": { "type": "integer", "description": "Remaining supply or -1" },
+        "is_exclusive": { "type": "boolean", "description": "Exclusive limited edition flag" },
+        "lottie_asset_url": { "type": "string", "description": "Lottie animation asset" },
+        "backdrop_color_hex": { "type": "string", "description": "Hex background color" },
+        "emoji_icon": { "type": "string", "description": "Fallback emoji glyph" },
+        "max_upgrade_level": { "type": "integer", "description": "Maximum upgrade tier" },
+        "created_at": { "type": "integer", "description": "Creation epoch millis" }
+      },
+      "required": ["title", "price", "total_supply", "available_supply", "created_at"]
+    },
+    "UserGift": {
+      "title": "UserGift",
+      "description": "Gift instance owned by a user.",
+      "type": "object",
+      "properties": {
+        "catalog_gift_id": { "type": "string", "description": "Catalog template ID" },
+        "sender_id": { "type": "string", "description": "Sender UID or anonymous" },
+        "receiver_id": { "type": "string", "description": "Recipient UID" },
+        "is_pinned_to_header": { "type": "boolean", "description": "Pinned to profile header" },
+        "pin_order_index": { "type": "integer", "description": "Display slot index" },
+        "upgrade_level": { "type": "integer", "description": "Current upgrade level" },
+        "transferable": { "type": "boolean", "description": "Transferable flag" },
+        "message": { "type": "string", "description": "Optional gift message" },
+        "is_anonymous": { "type": "boolean", "description": "Hide sender identity flag" },
+        "acquired_at": { "type": "integer", "description": "Acquisition epoch millis" },
+        "cached_title": { "type": "string", "description": "Cached gift title" },
+        "cached_emoji": { "type": "string", "description": "Cached emoji" },
+        "cached_color_hex": { "type": "string", "description": "Cached hex background" }
+      },
+      "required": ["catalog_gift_id", "sender_id", "receiver_id", "is_pinned_to_header", "upgrade_level", "acquired_at"]
+    },
+    "LedgerTransaction": {
+      "title": "LedgerTransaction",
+      "description": "Immutable financial ledger record for Stars purchases and transfers.",
+      "type": "object",
+      "properties": {
+        "idempotency_key": { "type": "string", "description": "Deduplication key" },
+        "type": { "type": "string", "enum": ["GIFT_PURCHASE", "GIFT_UPGRADE", "VIP_SUBSCRIPTION", "BALANCE_TOPUP", "CHANNEL_BOOST", "DIRECT_MESSAGE_STAR", "REWARD"], "description": "Ledger operation type" },
+        "from_user_id": { "type": "string", "description": "Source user or system identifier" },
+        "to_user_id": { "type": "string", "description": "Destination user or escrow identifier" },
+        "amount": { "type": "integer", "description": "Transaction Star amount" },
+        "fee": { "type": "integer", "description": "Transaction fee" },
+        "status": { "type": "string", "enum": ["COMMITTED", "PENDING", "FAILED"], "description": "Settlement status" },
+        "metadata": { "type": "object", "description": "Structured metadata map" },
+        "created_at": { "type": "integer", "description": "Creation epoch millis" }
+      },
+      "required": ["idempotency_key", "type", "from_user_id", "to_user_id", "amount", "status", "created_at"]
+    },
+    "IdempotencyKey": {
+      "title": "IdempotencyKey",
+      "description": "Replay-prevention record for atomic currency transactions.",
+      "type": "object",
+      "properties": {
+        "tx_id": { "type": "string", "description": "Associated ledger transaction ID" },
+        "user_id": { "type": "string", "description": "Initiating user UID" },
+        "created_at": { "type": "integer", "description": "Creation epoch millis" }
+      },
+      "required": ["tx_id", "user_id", "created_at"]
+    },
+    "PollVote": {
+      "title": "PollVote",
+      "description": "Single user vote record for channel/group polls.",
+      "type": "object",
+      "properties": {
+        "poll_id": { "type": "string", "description": "Poll identifier" },
+        "chat_id": { "type": "string", "description": "Parent chat identifier" },
+        "user_id": { "type": "string", "description": "Voter UID" },
+        "selected_option_ids": { "type": "array", "description": "Selected option indices" },
+        "timestamp": { "type": "integer", "description": "Vote epoch millis" }
+      },
+      "required": ["poll_id", "chat_id", "user_id", "selected_option_ids", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "#/entities/UserProfile",
+      "description": "User ecosystem profiles scoped by UID"
+    },
+    "/users/{userId}/presence/{statusId}": {
+      "schema": "#/entities/UserPresence",
+      "description": "Per-user online presence indicator"
+    },
+    "/chats/{chatId}": {
+      "schema": "#/entities/ChatConversation",
+      "description": "Direct, group, and channel conversations"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "#/entities/ChatMessage",
+      "description": "Chat message records"
+    },
+    "/chats/{chatId}/typing/{userId}": {
+      "schema": "#/entities/TypingStatus",
+      "description": "Per-participant typing state"
+    },
+    "/channels/{channelId}": {
+      "schema": "#/entities/ChannelDocument",
+      "description": "Channel boost state and discussion link metadata"
+    },
+    "/channels/{channelId}/posts/{postId}": {
+      "schema": "#/entities/ChannelPost",
+      "description": "Channel post discussion counters"
+    },
+    "/channels/{channelId}/posts/{postId}/comments/{commentId}": {
+      "schema": "#/entities/ChannelComment",
+      "description": "Comments on channel posts"
+    },
+    "/gifts_catalog/{catalogGiftId}": {
+      "schema": "#/entities/CatalogGift",
+      "description": "Catalog of purchasable gifts"
+    },
+    "/user_gifts/{userGiftId}": {
+      "schema": "#/entities/UserGift",
+      "description": "Purchased user gifts and profile header showcases"
+    },
+    "/ledger_transactions/{txId}": {
+      "schema": "#/entities/LedgerTransaction",
+      "description": "Immutable Star transaction ledger"
+    },
+    "/idempotency_keys/{keyId}": {
+      "schema": "#/entities/IdempotencyKey",
+      "description": "Transaction deduplication markers"
+    },
+    "/poll_votes/{voteId}": {
+      "schema": "#/entities/PollVote",
+      "description": "Immutable per-user poll votes"
+    }
+  }
+}

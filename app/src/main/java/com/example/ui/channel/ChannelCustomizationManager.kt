@@ -1,0 +1,1004 @@
+package com.example.ui.channel
+
+import android.content.Context
+import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import org.json.JSONObject
+
+/**
+ * ChannelCustomizationManager
+ * Central singleton managing channel and group appearance, Telegram boost voting,
+ * animated emoji statuses, wallpaper preferences, polls, and admin logs.
+ */
+object ChannelCustomizationManager {
+
+    private const val PREFS_NAME = "kuotex_channel_appearance_prefs"
+    private const val KEY_APPEARANCE_MAP = "appearance_map_json"
+    private var prefs: SharedPreferences? = null
+
+    private val customizations = MutableStateFlow<Map<String, ChannelCustomization>>(
+        mapOf(
+            "c1" to ChannelCustomization(
+                chatId = "c1",
+                emojiStatus = "⚡",
+                profileColorId = 0,
+                profileEmojiPattern = "⚡",
+                chatWallpaperId = "cyber_grid",
+                boostLevel = 4,
+                boostCount = 28,
+                boostsRequiredForNextLevel = 35,
+                hasVotedBoost = true,
+                subscriberCount = 12450,
+                description = "Главный канал разработки KuoteX. Ежедневные инсайды и обновления."
+            ),
+            "c5" to ChannelCustomization(
+                chatId = "c5",
+                emojiStatus = "🔥",
+                profileColorId = 1,
+                profileEmojiPattern = "🔥",
+                chatWallpaperId = "deep_space",
+                boostLevel = 3,
+                boostCount = 18,
+                boostsRequiredForNextLevel = 25,
+                hasVotedBoost = false,
+                subscriberCount = 8900,
+                description = "Android News & Tech Updates. Все самое свежее из мира мобильной разработки."
+            ),
+            "g1" to ChannelCustomization(
+                chatId = "g1",
+                emojiStatus = "👑",
+                profileColorId = 2,
+                profileEmojiPattern = "👑",
+                chatWallpaperId = "telegram_doodles",
+                boostLevel = 5,
+                boostCount = 42,
+                boostsRequiredForNextLevel = 50,
+                hasVotedBoost = true,
+                subscriberCount = 350,
+                description = "Официальная группа разработчиков OpenAI & Kotlin Devs."
+            )
+        )
+    )
+
+    private val pollsState = MutableStateFlow<Map<String, List<PollData>>>(
+        mapOf(
+            "c1" to listOf(
+                PollData(
+                    id = "poll_neon_1",
+                    chatId = "c1",
+                    creatorId = "admin",
+                    creatorName = "KuoteX Admin",
+                    question = "Какое новое оформление каналов в KuoteX вам нравится больше всего? ✨",
+                    options = listOf(
+                        PollOption(0, "🔥 Анимированные эмодзи в шапке", 142, 0.44f),
+                        PollOption(1, "🎨 Градиенты цвета профиля и цитат", 98, 0.31f),
+                        PollOption(2, "🖼️ Кастомные обои для подписчиков", 52, 0.16f),
+                        PollOption(3, "⭐ Система бустов и уровней", 28, 0.09f)
+                    ),
+                    isAnonymous = true,
+                    isMultipleChoice = false,
+                    isQuiz = false,
+                    totalVoters = 320,
+                    userSelectedOptionIds = setOf(0)
+                ),
+                PollData(
+                    id = "poll_neon_quiz",
+                    chatId = "c1",
+                    creatorId = "admin",
+                    creatorName = "KuoteX Quiz Master",
+                    question = "Викторина: Какой максимальный уровень буста доступен для каналов в Telegram?",
+                    options = listOf(
+                        PollOption(0, "Уровень 5", 12, 0.10f),
+                        PollOption(1, "Уровень 10", 85, 0.71f),
+                        PollOption(2, "Уровень 20", 15, 0.12f),
+                        PollOption(3, "Неограниченно", 8, 0.07f)
+                    ),
+                    isAnonymous = false,
+                    isMultipleChoice = false,
+                    isQuiz = true,
+                    correctOptionIndex = 1,
+                    explanation = "В Telegram каналы открывают все функции кастомизации на 10 уровне бустов!",
+                    totalVoters = 120,
+                    userSelectedOptionIds = setOf(1)
+                )
+            )
+        )
+    )
+
+    private val boostersState = MutableStateFlow<Map<String, List<BoosterUser>>>(
+        mapOf(
+            "c1" to listOf(
+                BoosterUser("u1", "Pavel Durov", "https://picsum.photos/seed/durov/100", 10, 4, System.currentTimeMillis() - 3600000),
+                BoosterUser("u2", "Alex KuoteX", "https://picsum.photos/seed/alex/100", 5, 3, System.currentTimeMillis() - 7200000),
+                BoosterUser("u3", "Elena Star", "https://picsum.photos/seed/elena/100", 3, 2, System.currentTimeMillis() - 14400000),
+                BoosterUser("u4", "KuoteX VIP", "https://picsum.photos/seed/vip/100", 2, 1, System.currentTimeMillis() - 28800000)
+            )
+        )
+    )
+
+    private val recentActionsState = MutableStateFlow<Map<String, List<AdminActionLog>>>(
+        mapOf(
+            "c1" to listOf(
+                AdminActionLog(
+                    adminName = "Pavel (Owner)",
+                    adminAvatar = "https://picsum.photos/seed/durov/100",
+                    actionTitle = "Изменен эмодзи-статус канала",
+                    details = "Установлен анимированный эмодзи: ⚡ (Молния)",
+                    timestamp = System.currentTimeMillis() - 1200000
+                ),
+                AdminActionLog(
+                    adminName = "Alex KuoteX",
+                    adminAvatar = "https://picsum.photos/seed/alex/100",
+                    actionTitle = "Обновлен цвет профиля",
+                    details = "Выбран градиент 'Синий Неон' и стиль цитат",
+                    timestamp = System.currentTimeMillis() - 3600000
+                ),
+                AdminActionLog(
+                    adminName = "Elena Star",
+                    adminAvatar = "https://picsum.photos/seed/elena/100",
+                    actionTitle = "Закреплено сообщение",
+                    details = "Опрос: 'Какое новое оформление каналов вам нравится?'",
+                    timestamp = System.currentTimeMillis() - 86400000
+                )
+            )
+        )
+    )
+
+    private var initializedContext: Context? = null
+
+    fun init(context: Context) {
+        val appContext = context.applicationContext ?: context
+        if (prefs != null && initializedContext === appContext) return
+        initializedContext = appContext
+        prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        loadPersistedAppearances()
+    }
+
+    private fun loadPersistedAppearances() {
+        val raw = prefs?.getString(KEY_APPEARANCE_MAP, null) ?: return
+        try {
+            val root = JSONObject(raw)
+            customizations.update { currentMap ->
+                val mutable = currentMap.toMutableMap()
+                val keys = root.keys()
+                while (keys.hasNext()) {
+                    val chatId = keys.next()
+                    val obj = root.optJSONObject(chatId) ?: continue
+                    val base = mutable[chatId] ?: ChannelCustomization(chatId = chatId)
+                    val headerColorRaw = obj.optInt("profileHeaderColorId", base.profileHeaderColorId ?: -1)
+                    val resolvedHeaderColor: Int? = if (headerColorRaw < 0) null else headerColorRaw
+                    mutable[chatId] = base.copy(
+                        emojiStatus = if (obj.isNull("emojiStatus")) null else obj.optString("emojiStatus", base.emojiStatus ?: "").ifBlank { null },
+                        emojiStatusAnimated = obj.optBoolean("emojiStatusAnimated", base.emojiStatusAnimated),
+                        messageColorId = obj.optInt("messageColorId", base.messageColorId),
+                        messageEmojiPattern = if (obj.isNull("messageEmojiPattern")) null else obj.optString("messageEmojiPattern", "").ifBlank { null },
+                        profileColorId = obj.optInt("profileColorId", base.profileColorId),
+                        profileHeaderColorId = resolvedHeaderColor,
+                        profileEmojiPattern = if (obj.isNull("profileEmojiPattern")) null else obj.optString("profileEmojiPattern", "").ifBlank { null },
+                        chatWallpaperId = obj.optString("chatWallpaperId", base.chatWallpaperId),
+                        wallpaperCustomUri = if (obj.isNull("wallpaperCustomUri")) null else obj.optString("wallpaperCustomUri", "").ifBlank { null },
+                        wallpaperBlur = obj.optDouble("wallpaperBlur", base.wallpaperBlur.toDouble()).toFloat(),
+                        wallpaperDim = obj.optDouble("wallpaperDim", base.wallpaperDim.toDouble()).toFloat(),
+                        wallpaperPatternOpacity = obj.optDouble("wallpaperPatternOpacity", base.wallpaperPatternOpacity.toDouble()).toFloat(),
+                        directMessagesEnabled = obj.optBoolean("directMessagesEnabled", base.directMessagesEnabled),
+                        directMessageStarPrice = obj.optInt("directMessageStarPrice", base.directMessageStarPrice),
+                        discussionChatId = if (!obj.has("discussionChatId")) base.discussionChatId else if (obj.isNull("discussionChatId")) null else obj.optString("discussionChatId", "").ifBlank { null },
+                        discussionChatTitle = if (obj.has("discussionChatTitle")) obj.optString("discussionChatTitle", base.discussionChatTitle) else base.discussionChatTitle,
+                        discussionOnlyMembersCanSend = obj.optBoolean("discussionOnlyMembersCanSend", base.discussionOnlyMembersCanSend),
+                        discussionJoinRequestsRequired = obj.optBoolean("discussionJoinRequestsRequired", base.discussionJoinRequestsRequired),
+                        isPublic = obj.optBoolean("isPublic", base.isPublic),
+                        inviteLink = if (obj.has("inviteLink")) obj.optString("inviteLink", base.inviteLink) else base.inviteLink,
+                        description = if (obj.has("description")) obj.optString("description", base.description) else base.description,
+                        avatarUrl = if (!obj.has("avatarUrl") || obj.isNull("avatarUrl")) base.avatarUrl else obj.optString("avatarUrl", "").ifBlank { null },
+                        subscriberCount = obj.optInt("subscriberCount", base.subscriberCount),
+                        restrictSavingContent = obj.optBoolean("restrictSavingContent", base.restrictSavingContent)
+                    )
+                }
+                mutable
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun persistAppearances() {
+        val activePrefs = prefs ?: return
+        try {
+            val root = JSONObject()
+            customizations.value.forEach { (chatId, c) ->
+                val obj = JSONObject().apply {
+                    put("emojiStatus", c.emojiStatus ?: JSONObject.NULL)
+                    put("emojiStatusAnimated", c.emojiStatusAnimated)
+                    put("messageColorId", c.messageColorId)
+                    put("messageEmojiPattern", c.messageEmojiPattern ?: JSONObject.NULL)
+                    put("profileColorId", c.profileColorId)
+                    put("profileHeaderColorId", c.profileHeaderColorId ?: -1)
+                    put("profileEmojiPattern", c.profileEmojiPattern ?: JSONObject.NULL)
+                    put("chatWallpaperId", c.chatWallpaperId)
+                    put("wallpaperCustomUri", c.wallpaperCustomUri ?: JSONObject.NULL)
+                    put("wallpaperBlur", c.wallpaperBlur.toDouble())
+                    put("wallpaperDim", c.wallpaperDim.toDouble())
+                    put("wallpaperPatternOpacity", c.wallpaperPatternOpacity.toDouble())
+                    put("directMessagesEnabled", c.directMessagesEnabled)
+                    put("directMessageStarPrice", c.directMessageStarPrice)
+                    put("discussionChatId", c.discussionChatId ?: JSONObject.NULL)
+                    put("discussionChatTitle", c.discussionChatTitle)
+                    put("discussionOnlyMembersCanSend", c.discussionOnlyMembersCanSend)
+                    put("discussionJoinRequestsRequired", c.discussionJoinRequestsRequired)
+                    put("isPublic", c.isPublic)
+                    put("inviteLink", c.inviteLink)
+                    put("description", c.description)
+                    put("avatarUrl", c.avatarUrl ?: JSONObject.NULL)
+                    put("subscriberCount", c.subscriberCount)
+                    put("restrictSavingContent", c.restrictSavingContent)
+                }
+                root.put(chatId, obj)
+            }
+            activePrefs.edit().putString(KEY_APPEARANCE_MAP, root.toString()).apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun getCustomizationFlow(chatId: String): StateFlow<Map<String, ChannelCustomization>> = customizations.asStateFlow()
+
+    fun getAllCustomizationsFlow(): StateFlow<Map<String, ChannelCustomization>> = customizations.asStateFlow()
+
+    fun getCustomization(chatId: String): ChannelCustomization {
+        return customizations.value[chatId] ?: ChannelCustomization(chatId = chatId).also { defaultItem ->
+            customizations.update { it + (chatId to defaultItem) }
+        }
+    }
+
+    fun updateAvatar(chatId: String, avatarUrl: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(avatarUrl = avatarUrl)
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Обновлен аватар",
+            details = "Загружена новая фотография профиля"
+        )
+    }
+
+    fun updateEmojiStatus(chatId: String, emoji: String?, isAnimated: Boolean = true) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(emojiStatus = emoji, emojiStatusAnimated = isAnimated)
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = if (emoji != null) "Изменен эмодзи-статус" else "Удален эмодзи-статус",
+            details = if (emoji != null) "Установлен статус: $emoji" else "Эмодзи-статус сброшен"
+        )
+    }
+
+    fun updateProfileColor(chatId: String, colorId: Int, emojiPattern: String? = null) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(
+                profileColorId = colorId,
+                messageColorId = colorId,
+                profileHeaderColorId = colorId,
+                profileEmojiPattern = emojiPattern ?: current.profileEmojiPattern
+            )
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        val paletteName = TelegramMessageColors.getScheme(colorId).name
+        logAdminAction(
+            chatId = chatId,
+            title = "Изменен цвет профиля",
+            details = "Выбран стиль '$paletteName'"
+        )
+    }
+
+    fun resetProfileColor(chatId: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                profileHeaderColorId = null,
+                profileEmojiPattern = null
+            ))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Сброшен цвет профиля",
+            details = "Профиль возвращён к стандартной теме"
+        )
+    }
+
+    fun updateWallpaper(
+        chatId: String,
+        wallpaperId: String,
+        customUri: String? = null,
+        blur: Float = 0f,
+        dim: Float = 0.25f,
+        patternOpacity: Float = 0.35f
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(
+                chatWallpaperId = wallpaperId,
+                wallpaperCustomUri = customUri,
+                wallpaperBlur = blur,
+                wallpaperDim = dim,
+                wallpaperPatternOpacity = patternOpacity
+            )
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        val wallpaperName = if (wallpaperId == "custom_gallery") "Фото из галереи" else TelegramWallpapers.getPreset(wallpaperId).name
+        logAdminAction(
+            chatId = chatId,
+            title = "Установлены обои чата",
+            details = "Выбраны обои: $wallpaperName (Затемнение: ${(dim * 100).toInt()}%)"
+        )
+    }
+
+    fun updateChannelAppearance(
+        chatId: String,
+        messageColorId: Int,
+        messageEmojiPattern: String?,
+        profileHeaderColorId: Int?,
+        profileEmojiPattern: String?,
+        emojiStatus: String?,
+        wallpaperId: String,
+        customWallpaperUri: String?,
+        wallpaperBlur: Float,
+        wallpaperDim: Float,
+        wallpaperPatternOpacity: Float = 0.35f
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(
+                messageColorId = messageColorId,
+                messageEmojiPattern = messageEmojiPattern,
+                profileColorId = messageColorId,
+                profileHeaderColorId = profileHeaderColorId,
+                profileEmojiPattern = profileEmojiPattern,
+                emojiStatus = emojiStatus,
+                emojiStatusAnimated = emojiStatus != null,
+                chatWallpaperId = wallpaperId,
+                wallpaperCustomUri = if (wallpaperId == "custom_gallery") customWallpaperUri else null,
+                wallpaperBlur = wallpaperBlur.coerceIn(0f, 24f),
+                wallpaperDim = wallpaperDim.coerceIn(0f, 0.85f),
+                wallpaperPatternOpacity = wallpaperPatternOpacity
+            )
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        val schemeName = TelegramMessageColors.getScheme(messageColorId).name
+        val wpName = if (wallpaperId == "custom_gallery") "Фото из галереи" else TelegramWallpapers.getPreset(wallpaperId).name
+        logAdminAction(
+            chatId = chatId,
+            title = "Обновлено оформление канала",
+            details = "Цветовая схема: $schemeName, Обои: $wpName"
+        )
+    }
+
+    fun updateAutoDelete(chatId: String, period: String?) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(autoDeletePeriod = period)
+            map + (chatId to updated)
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = if (period != null) "Включено автоудаление" else "Отключено автоудаление",
+            details = if (period != null) "Период: $period" else "Автоудаление сообщений выключено"
+        )
+    }
+
+    fun toggleBoost(chatId: String): Boolean {
+        var newVotedState = false
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            newVotedState = !current.hasVotedBoost
+            val newCount = if (newVotedState) current.boostCount + 1 else (current.boostCount - 1).coerceAtLeast(0)
+            val newLevel = com.example.data.ecosystem.KuoteXBoostProgression.calculateLevel(newCount)
+            val reqNext = com.example.data.ecosystem.KuoteXBoostProgression.nextLevelRequirement(newCount)
+            val updated = current.copy(
+                hasVotedBoost = newVotedState,
+                boostCount = newCount,
+                boostLevel = newLevel,
+                boostsRequiredForNextLevel = reqNext
+            )
+            map + (chatId to updated)
+        }
+        if (newVotedState) {
+            boostersState.update { map ->
+                val list = map[chatId]?.toMutableList() ?: mutableListOf()
+                list.add(
+                    0,
+                    BoosterUser(
+                        userId = "me",
+                        userName = "Вы",
+                        avatarUrl = "https://picsum.photos/seed/my_avatar/100",
+                        boostsCount = 1,
+                        levelGranted = 1,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+                map + (chatId to list)
+            }
+        }
+        return newVotedState
+    }
+
+    private fun calculateLevel(boosts: Int): Int {
+        return when {
+            boosts >= 50 -> 6
+            boosts >= 35 -> 5
+            boosts >= 25 -> 4
+            boosts >= 15 -> 3
+            boosts >= 8 -> 2
+            boosts >= 3 -> 1
+            else -> 0
+        }
+    }
+
+    fun updateSignatures(chatId: String, enabled: Boolean) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(isSignaturesEnabled = enabled))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Подписи сообщений",
+            details = if (enabled) "Подписи авторов включены" else "Подписи авторов отключены"
+        )
+    }
+
+    fun updateSlowMode(chatId: String, seconds: Int) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(slowModeSeconds = seconds))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Медленный режим",
+            details = if (seconds > 0) "Интервал: $seconds сек" else "Медленный режим выключен"
+        )
+    }
+
+    fun updatePermissions(chatId: String, restricted: Set<String>) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(restrictedPermissions = restricted))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Изменены разрешения участников",
+            details = "Ограничено действий: ${restricted.size}"
+        )
+    }
+
+    fun updateChannelInfo(chatId: String, description: String, inviteLink: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(description = description, inviteLink = inviteLink))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Обновлена информация о канале",
+            details = "Изменено описание и ссылка"
+        )
+    }
+
+    fun updateDirectMessages(chatId: String, enabled: Boolean, starPrice: Int) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(directMessagesEnabled = enabled, directMessageStarPrice = starPrice))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Сообщения каналу",
+            details = if (enabled) "Платные сообщения активны (⭐ $starPrice)" else "Сообщения каналу выключены"
+        )
+    }
+
+    fun updateAutoTranslate(chatId: String, enabled: Boolean) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(autoTranslateEnabled = enabled))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Автоперевод сообщений",
+            details = if (enabled) "Автоперевод включен" else "Автоперевод выключен"
+        )
+    }
+
+    fun updateReactionsConfig(
+        chatId: String,
+        enabled: Boolean,
+        available: List<String>,
+        maxPerPost: Int,
+        paidStars: Boolean
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                reactionsEnabled = enabled,
+                availableReactions = available,
+                maxReactionsPerPost = maxPerPost,
+                paidStarReactionsEnabled = paidStars
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Настройка реакций",
+            details = "Доступно реакций: ${available.size}, макс на пост: $maxPerPost"
+        )
+    }
+
+    fun updateAutoGreeting(chatId: String, enabled: Boolean, greetingText: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updatedMessages = when {
+                !enabled -> emptyList()
+                greetingText.isNotBlank() && current.greetingMessages.isEmpty() -> listOf(
+                    ChannelGreetingMessage(text = greetingText.trim())
+                )
+                else -> current.greetingMessages
+            }
+            map + (chatId to current.copy(
+                autoGreetingEnabled = enabled && (updatedMessages.isNotEmpty() || greetingText.isNotBlank()),
+                autoGreetingText = greetingText,
+                greetingMessages = updatedMessages
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Приветственное сообщение",
+            details = if (enabled) "Автоприветствие включено" else "Автоприветствие отключено"
+        )
+    }
+
+    fun addGreetingMessage(
+        chatId: String,
+        text: String,
+        mediaPath: String? = null,
+        mediaType: String? = null
+    ): ChannelGreetingMessage {
+        val trimmed = text.trim()
+        val msg = ChannelGreetingMessage(
+            text = trimmed,
+            mediaPath = mediaPath,
+            mediaType = mediaType,
+            timestamp = System.currentTimeMillis()
+        )
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updatedList = current.greetingMessages + msg
+            map + (chatId to current.copy(
+                autoGreetingEnabled = true,
+                autoGreetingText = updatedList.joinToString("\n\n") { it.text }.trim(),
+                greetingMessages = updatedList,
+                greetingDeliveredUserIds = emptySet()
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Добавлено приветственное сообщение",
+            details = trimmed.ifBlank { "Медиа-приветствие" }.take(60)
+        )
+        return msg
+    }
+
+    fun updateGreetingMessage(chatId: String, messageId: String, newText: String) {
+        val trimmed = newText.trim()
+        if (trimmed.isBlank()) return
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updatedList = current.greetingMessages.map { msg ->
+                if (msg.id == messageId) msg.copy(text = trimmed) else msg
+            }
+            map + (chatId to current.copy(
+                autoGreetingEnabled = updatedList.isNotEmpty(),
+                autoGreetingText = updatedList.joinToString("\n\n") { it.text }.trim(),
+                greetingMessages = updatedList
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Изменено приветственное сообщение",
+            details = trimmed.take(60)
+        )
+    }
+
+    fun deleteGreetingMessage(chatId: String, messageId: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updatedList = current.greetingMessages.filterNot { it.id == messageId }
+            map + (chatId to current.copy(
+                autoGreetingEnabled = updatedList.isNotEmpty(),
+                autoGreetingText = updatedList.joinToString("\n\n") { it.text }.trim(),
+                greetingMessages = updatedList
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Удалено приветственное сообщение",
+            details = "Сообщение приветствия удалено"
+        )
+    }
+
+    fun getEffectiveGreetingMessages(customization: ChannelCustomization): List<ChannelGreetingMessage> {
+        if (!customization.autoGreetingEnabled) return emptyList()
+        if (customization.greetingMessages.isNotEmpty()) return customization.greetingMessages
+        val fallback = customization.autoGreetingText.trim()
+        return if (fallback.isNotBlank()) {
+            listOf(ChannelGreetingMessage(id = "legacy_${customization.chatId}", text = fallback))
+        } else {
+            emptyList()
+        }
+    }
+
+    fun consumeGreetingMessagesForNewMember(chatId: String, userId: String): List<ChannelGreetingMessage> {
+        var toDeliver: List<ChannelGreetingMessage> = emptyList()
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val effective = getEffectiveGreetingMessages(current)
+            if (effective.isNotEmpty() && !current.greetingDeliveredUserIds.contains(userId)) {
+                toDeliver = effective
+                map + (chatId to current.copy(
+                    greetingDeliveredUserIds = current.greetingDeliveredUserIds + userId
+                ))
+            } else {
+                map
+            }
+        }
+        return toDeliver
+    }
+
+    fun updateAuthorProfiles(chatId: String, showProfiles: Boolean) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(showAuthorProfiles = showProfiles))
+        }
+    }
+
+    fun initializeCreatedChannel(
+        chatId: String,
+        description: String,
+        isPublic: Boolean,
+        inviteLink: String,
+        avatarUrl: String?
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            val updated = current.copy(
+                description = description,
+                isPublic = isPublic,
+                inviteLink = inviteLink,
+                avatarUrl = avatarUrl,
+                discussionChatId = null,
+                discussionChatTitle = "",
+                subscriberCount = 1,
+                boostLevel = 0,
+                boostCount = 0,
+                boostsRequiredForNextLevel = 3
+            )
+            map + (chatId to updated)
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Создан канал",
+            details = if (isPublic) "Публичный канал ($inviteLink)" else "Частный канал"
+        )
+    }
+
+    fun updateChannelType(chatId: String, isPublic: Boolean, inviteLink: String, restrictSaving: Boolean) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                isPublic = isPublic,
+                inviteLink = inviteLink,
+                restrictSavingContent = restrictSaving
+            ))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Тип канала",
+            details = if (isPublic) "Публичный ($inviteLink)" else "Частный канал"
+        )
+    }
+
+    fun updatePrimaryInviteLink(chatId: String, inviteLink: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(inviteLink = inviteLink))
+        }
+        persistAppearances()
+    }
+
+    fun updateDiscussionChat(chatId: String, discussionTitle: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(discussionChatTitle = discussionTitle))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Обсуждение",
+            details = "Привязана группа «$discussionTitle»"
+        )
+    }
+
+    fun linkDiscussionChat(chatId: String, discussionChatId: String?, discussionTitle: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                discussionChatId = discussionChatId,
+                discussionChatTitle = discussionTitle
+            ))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Привязана группа обсуждений",
+            details = "Группа «$discussionTitle»"
+        )
+    }
+
+    fun unlinkDiscussionChat(chatId: String) {
+        val oldTitle = customizations.value[chatId]?.discussionChatTitle ?: ""
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                discussionChatId = null,
+                discussionChatTitle = "",
+                discussionOnlyMembersCanSend = false,
+                discussionJoinRequestsRequired = false
+            ))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Отвязана группа обсуждений",
+            details = if (oldTitle.isNotBlank()) "Группа «$oldTitle» отвязана" else "Обсуждение отключено"
+        )
+    }
+
+    fun updateDiscussionSettings(
+        chatId: String,
+        onlyMembersCanSend: Boolean,
+        joinRequestsRequired: Boolean
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                discussionOnlyMembersCanSend = onlyMembersCanSend,
+                discussionJoinRequestsRequired = joinRequestsRequired
+            ))
+        }
+        persistAppearances()
+        logAdminAction(
+            chatId = chatId,
+            title = "Настройки обсуждения",
+            details = "Только участники: ${if (onlyMembersCanSend) "Да" else "Нет"}, Заявки: ${if (joinRequestsRequired) "Да" else "Нет"}"
+        )
+    }
+
+    fun syncRemoteDiscussionLink(
+        chatId: String,
+        discussionChatId: String?,
+        discussionTitle: String,
+        onlyMembersCanSend: Boolean,
+        joinRequestsRequired: Boolean
+    ) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                discussionChatId = discussionChatId,
+                discussionChatTitle = discussionTitle,
+                discussionOnlyMembersCanSend = onlyMembersCanSend,
+                discussionJoinRequestsRequired = joinRequestsRequired
+            ))
+        }
+        persistAppearances()
+    }
+
+    fun getLinkedChannelForGroup(groupChatId: String): ChannelCustomization? {
+        return customizations.value.values.firstOrNull { it.discussionChatId == groupChatId }
+    }
+
+    fun banUser(chatId: String, userId: String, userName: String, reason: String = "Нарушение правил канала", bannedBy: String = "Вы") {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            if (current.blacklistedUsers.any { it.userId == userId }) return@update map
+            val entry = BlacklistedUser(
+                userId = userId,
+                userName = userName,
+                reason = reason,
+                bannedBy = bannedBy,
+                timestamp = System.currentTimeMillis()
+            )
+            map + (chatId to current.copy(
+                blacklistedUsers = listOf(entry) + current.blacklistedUsers,
+                subscriberCount = (current.subscriberCount - 1).coerceAtLeast(1)
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Блокировка пользователя",
+            details = "$userName добавлен в чёрный список ($reason)"
+        )
+    }
+
+    fun unbanUser(chatId: String, userId: String) {
+        var unbannedName = userId
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            unbannedName = current.blacklistedUsers.find { it.userId == userId }?.userName ?: userId
+            map + (chatId to current.copy(
+                blacklistedUsers = current.blacklistedUsers.filterNot { it.userId == userId }
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Удаление из чёрного списка",
+            details = "Пользователь $unbannedName разблокирован"
+        )
+    }
+
+    fun createInviteLink(chatId: String, label: String = "", maxUses: Int? = null, durationDays: Int? = null): ChannelInviteLink {
+        val code = java.util.UUID.randomUUID().toString().replace("-", "").take(14)
+        val link = ChannelInviteLink(
+            url = "t.me/+$code",
+            label = label.ifBlank { "Дополнительная ссылка" },
+            maxUses = maxUses,
+            expiresAt = durationDays?.let { System.currentTimeMillis() + it * 86_400_000L }
+        )
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(additionalInviteLinks = listOf(link) + current.additionalInviteLinks))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Создана пригласительная ссылка",
+            details = "${link.label}: ${link.url}"
+        )
+        return link
+    }
+
+    fun revokeInviteLink(chatId: String, linkId: String) {
+        customizations.update { map ->
+            val current = map[chatId] ?: ChannelCustomization(chatId = chatId)
+            map + (chatId to current.copy(
+                additionalInviteLinks = current.additionalInviteLinks.filterNot { it.id == linkId }
+            ))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Отозвана ссылка-приглашение",
+            details = "Ссылка больше недействительна"
+        )
+    }
+
+    fun recordAdminLog(chatId: String, title: String, details: String) {
+        logAdminAction(chatId, title, details)
+    }
+
+    // --- Poll & Voting Operations ---
+
+    fun getPollsFlow(chatId: String): StateFlow<Map<String, List<PollData>>> = pollsState.asStateFlow()
+
+    fun createPoll(chatId: String, poll: PollData) {
+        pollsState.update { map ->
+            val currentList = map[chatId] ?: emptyList()
+            map + (chatId to (listOf(poll) + currentList))
+        }
+        logAdminAction(
+            chatId = chatId,
+            title = "Создан опрос",
+            details = "${if (poll.isQuiz) "Викторина" else "Опрос"}: '${poll.question.take(30)}...'"
+        )
+    }
+
+    fun votePoll(chatId: String, pollId: String, optionIndex: Int, multiSelect: Boolean = false) {
+        pollsState.update { map ->
+            val list = map[chatId] ?: return@update map
+            val updatedList = list.map { poll ->
+                if (poll.id != pollId || poll.isClosed) return@map poll
+
+                val currentSelected = poll.userSelectedOptionIds.toMutableSet()
+                if (multiSelect) {
+                    if (currentSelected.contains(optionIndex)) {
+                        currentSelected.remove(optionIndex)
+                    } else {
+                        currentSelected.add(optionIndex)
+                    }
+                } else {
+                    currentSelected.clear()
+                    currentSelected.add(optionIndex)
+                }
+
+                // Recalculate counts
+                val newOptions = poll.options.mapIndexed { idx, opt ->
+                    val isSelected = currentSelected.contains(idx)
+                    val baseCount = if (poll.userSelectedOptionIds.contains(idx)) opt.voteCount - 1 else opt.voteCount
+                    val finalCount = if (isSelected) baseCount + 1 else baseCount
+                    opt.copy(voteCount = finalCount.coerceAtLeast(0))
+                }
+                val total = newOptions.sumOf { it.voteCount }
+                val formattedOptions = newOptions.map { opt ->
+                    opt.copy(percentage = if (total > 0) opt.voteCount.toFloat() / total else 0f)
+                }
+
+                poll.copy(
+                    options = formattedOptions,
+                    totalVoters = total,
+                    userSelectedOptionIds = currentSelected
+                )
+            }
+            map + (chatId to updatedList)
+        }
+    }
+
+    fun retractPollVote(chatId: String, pollId: String) {
+        pollsState.update { map ->
+            val list = map[chatId] ?: return@update map
+            val updatedList = list.map { poll ->
+                if (poll.id != pollId) return@map poll
+                val newOptions = poll.options.mapIndexed { idx, opt ->
+                    val wasSelected = poll.userSelectedOptionIds.contains(idx)
+                    val finalCount = if (wasSelected) (opt.voteCount - 1).coerceAtLeast(0) else opt.voteCount
+                    opt.copy(voteCount = finalCount)
+                }
+                val total = newOptions.sumOf { it.voteCount }
+                val formattedOptions = newOptions.map { opt ->
+                    opt.copy(percentage = if (total > 0) opt.voteCount.toFloat() / total else 0f)
+                }
+                poll.copy(
+                    options = formattedOptions,
+                    totalVoters = total,
+                    userSelectedOptionIds = emptySet()
+                )
+            }
+            map + (chatId to updatedList)
+        }
+    }
+
+    fun closePoll(chatId: String, pollId: String) {
+        pollsState.update { map ->
+            val list = map[chatId] ?: return@update map
+            val updatedList = list.map { poll ->
+                if (poll.id == pollId) poll.copy(isClosed = true) else poll
+            }
+            map + (chatId to updatedList)
+        }
+    }
+
+    // --- Boosters & Audit Log ---
+
+    fun getBoostersFlow(chatId: String): StateFlow<Map<String, List<BoosterUser>>> = boostersState.asStateFlow()
+
+    fun getRecentActionsFlow(chatId: String): StateFlow<Map<String, List<AdminActionLog>>> = recentActionsState.asStateFlow()
+
+    private fun logAdminAction(chatId: String, title: String, details: String) {
+        recentActionsState.update { map ->
+            val currentList = map[chatId] ?: emptyList()
+            val newLog = AdminActionLog(
+                adminName = "Вы (Администратор)",
+                adminAvatar = "https://picsum.photos/seed/my_avatar/100",
+                actionTitle = title,
+                details = details,
+                timestamp = System.currentTimeMillis()
+            )
+            map + (chatId to (listOf(newLog) + currentList.take(20)))
+        }
+    }
+}
