@@ -1380,6 +1380,47 @@ class AppViewModel(
         _isLoadingMoreMessages.update { it - chatId }
     }
 
+    private fun sanitizeDisplayOrDecrypted(
+        value: String?,
+        fallbackText: String? = null
+    ): String? {
+        if (value == null) return null
+        if (!value.startsWith("e2e:") && !value.startsWith("ciphertext:[")) {
+            return value
+        }
+        val decoded = signalProtocolManager.decryptMessage(value)
+        return if (decoded != "[Decryption Failed]" && !decoded.startsWith("e2e:")) {
+            decoded
+        } else {
+            fallbackText?.takeIf { it.isNotBlank() && !it.startsWith("e2e:") } ?: "Сообщение"
+        }
+    }
+
+    private fun decryptMessageFields(
+        msg: Message,
+        fallbackById: Map<String, String> = emptyMap()
+    ): Message {
+        val decryptedText = signalProtocolManager.decryptMessage(msg.text)
+        val fallback = msg.replyToMessageId?.let { fallbackById[it] }
+        val decryptedReply = sanitizeDisplayOrDecrypted(msg.replyToMessageText, fallback)
+        return msg.copy(
+            text = decryptedText,
+            replyToMessageText = decryptedReply
+        )
+    }
+
+    private fun isMultiUserChannelOrDiscussion(chat: Chat?): Boolean {
+        if (chat == null) return false
+        if (chat.isChannel) return true
+        if (!chat.isGroup) return false
+        if (!chat.linkedChannelId.isNullOrBlank()) return true
+        return com.example.ui.channel.ChannelCustomizationManager
+            .getAllCustomizationsFlow()
+            .value
+            .values
+            .any { it.discussionChatId == chat.id }
+    }
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     fun getPagedMessages(chatId: String): Flow<List<Message>> =
         _chatPageSizes.map { it[chatId] ?: DEFAULT_CHAT_PAGE_SIZE }
@@ -1388,16 +1429,36 @@ class AppViewModel(
                 repository.getPagedMessages(chatId, limit)
             }
             .map { messages ->
-                messages.map { msg ->
+                val withText = messages.map { msg ->
                     msg.copy(text = signalProtocolManager.decryptMessage(msg.text))
+                }
+                val byId = withText.associate { it.id to it.text }
+                withText.map { msg ->
+                    val fallback = msg.replyToMessageId?.let { byId[it] }
+                    val decryptedReply = sanitizeDisplayOrDecrypted(msg.replyToMessageText, fallback)
+                    if (decryptedReply != msg.replyToMessageText) {
+                        msg.copy(replyToMessageText = decryptedReply)
+                    } else {
+                        msg
+                    }
                 }
             }
 
     fun getMessageCountForChat(chatId: String): Flow<Int> = repository.getMessageCountForChat(chatId)
 
     fun getMessages(chatId: String) = repository.getMessages(chatId).map { messages ->
-        messages.map { msg ->
+        val withText = messages.map { msg ->
             msg.copy(text = signalProtocolManager.decryptMessage(msg.text))
+        }
+        val byId = withText.associate { it.id to it.text }
+        withText.map { msg ->
+            val fallback = msg.replyToMessageId?.let { byId[it] }
+            val decryptedReply = sanitizeDisplayOrDecrypted(msg.replyToMessageText, fallback)
+            if (decryptedReply != msg.replyToMessageText) {
+                msg.copy(replyToMessageText = decryptedReply)
+            } else {
+                msg
+            }
         }
     }
     fun getGroupMembers(chatId: String) = repository.getGroupMembers(chatId)
@@ -2220,7 +2281,13 @@ class AppViewModel(
             }
 
             val sanitizedText = MessageSanitizer.sanitize(text)
-            val encryptedMsg = signalProtocolManager.encryptMessage(sanitizedText)
+            val usePlaintextStorage = isMultiUserChannelOrDiscussion(targetChat)
+            val storedBody = if (usePlaintextStorage) {
+                sanitizedText
+            } else {
+                signalProtocolManager.encryptMessage(sanitizedText)
+            }
+            val safeReplyToText = sanitizeDisplayOrDecrypted(replyToMessageText)
             
             val isOnline = _connectionStatus.value == ConnectionStatus.ONLINE
             val messageId = java.util.UUID.randomUUID().toString()
@@ -2256,13 +2323,13 @@ class AppViewModel(
                 id = messageId,
                 chatId = chatId,
                 senderId = senderId,
-                text = encryptedMsg,
+                text = storedBody,
                 audioPath = audioPath,
                 timestamp = System.currentTimeMillis(),
                 expiresAt = if (expiresIn != null) System.currentTimeMillis() + expiresIn else null,
                 documentData = documentData,
                 replyToMessageId = replyToMessageId,
-                replyToMessageText = replyToMessageText,
+                replyToMessageText = safeReplyToText,
                 isDelivered = isOnline, // if offline, it stays pending (not delivered)
                 mediaPath = mediaPath,
                 mediaType = mediaType,
@@ -2299,7 +2366,7 @@ class AppViewModel(
                             id = fwdMsgId,
                             chatId = linkedGroupId,
                             senderId = senderId,
-                            text = encryptedMsg,
+                            text = sanitizedText,
                             audioPath = audioPath,
                             mediaPath = mediaPath,
                             mediaType = mediaType,
@@ -2345,7 +2412,7 @@ class AppViewModel(
                     mediaType = mediaType,
                     documentData = documentData,
                     replyToMessageId = replyToMessageId,
-                    replyToMessageText = replyToMessageText,
+                    replyToMessageText = safeReplyToText,
                     expiresIn = expiresIn,
                     status = "QUEUED"
                 )
@@ -2402,11 +2469,18 @@ class AppViewModel(
     ) {
         viewModelScope.launch {
             val isOnline = _connectionStatus.value == ConnectionStatus.ONLINE
+            val targetChat = repository.allChats.firstOrNull()?.find { it.id == targetChatId }
+            val usePlaintextTarget = isMultiUserChannelOrDiscussion(targetChat)
             for ((index, item) in messagesToForward.withIndex()) {
                 val originalMessage = item.first
                 val originalSenderName = item.second
-                val sanitizedText = MessageSanitizer.sanitize(originalMessage.text)
-                val encryptedMsg = signalProtocolManager.encryptMessage(sanitizedText)
+                val decodedOriginal = signalProtocolManager.decryptMessage(originalMessage.text)
+                val sanitizedText = MessageSanitizer.sanitize(decodedOriginal)
+                val storedBody = if (usePlaintextTarget) {
+                    sanitizedText
+                } else {
+                    signalProtocolManager.encryptMessage(sanitizedText)
+                }
                 
                 val originalAuthorName = if (originalMessage.isForwarded && !originalMessage.forwardOriginalSenderName.isNullOrBlank()) {
                     originalMessage.forwardOriginalSenderName
@@ -2426,7 +2500,7 @@ class AppViewModel(
                     id = messageId,
                     chatId = targetChatId,
                     senderId = senderId,
-                    text = encryptedMsg,
+                    text = storedBody,
                     audioPath = originalMessage.audioPath,
                     mediaPath = originalMessage.mediaPath,
                     mediaType = originalMessage.mediaType,
@@ -3994,7 +4068,9 @@ class AppViewModel(
     }
 
     fun observePostMessage(postId: String): Flow<Message?> {
-        return repository.observeMessageById(postId)
+        return repository.observeMessageById(postId).map { msg ->
+            msg?.let { decryptMessageFields(it) }
+        }
     }
 
     fun observePostComments(channelId: String, postId: String): Flow<List<com.example.ui.channel.ChannelPostCommentEntity>> {
@@ -4077,13 +4153,13 @@ class AppViewModel(
         }
         val channelCustom = com.example.ui.channel.ChannelCustomizationManager.getCustomization(channelId)
         val channelTitle = channelChat?.title?.ifBlank { "Канал" } ?: "Канал"
-        val encryptedBody = signalProtocolManager.encryptMessage(post.text)
+        val plainPostBody = signalProtocolManager.decryptMessage(post.text)
         val newMirroredId = java.util.UUID.randomUUID().toString()
         val fwdMsg = Message(
             id = newMirroredId,
             chatId = linkedGroupId,
             senderId = post.senderId,
-            text = encryptedBody,
+            text = plainPostBody,
             audioPath = post.audioPath,
             mediaPath = post.mediaPath,
             mediaType = post.mediaType,
@@ -4102,14 +4178,14 @@ class AppViewModel(
             senderCustomTag = "канал",
             senderEmojiStatus = channelCustom.emojiStatus
         )
-        repository.insertMessageAndUpdateChat(fwdMsg, post.text, channelTitle)
+        repository.insertMessageAndUpdateChat(fwdMsg, plainPostBody, channelTitle)
         repository.updatePinStatus(newMirroredId, true)
         repository.updatePinnedMessage(linkedGroupId, newMirroredId)
         repository.updateMirroredGroupMessageId(post.id, newMirroredId)
         com.example.ui.channel.ChannelDiscussionFirestoreSync.syncMirroredGroupMessage(
             groupId = linkedGroupId,
             message = fwdMsg,
-            plainText = post.text
+            plainText = plainPostBody
         )
         return newMirroredId
     }
@@ -4134,7 +4210,7 @@ class AppViewModel(
             val active = activeAccount.value ?: repository.activeAccountFlow.firstOrNull()
             val channelChat = repository.getChatById(channelId)
             val channelCustom = com.example.ui.channel.ChannelCustomizationManager.getCustomization(channelId)
-            val post = repository.getDecryptedMessageById(postId)
+            val post = repository.getDecryptedMessageById(postId)?.let { decryptMessageFields(it) }
             val senderId = active?.id?.ifBlank { "me" } ?: "me"
 
             val channelMembers = repository.getGroupMembers(channelId).firstOrNull().orEmpty()
@@ -4162,14 +4238,16 @@ class AppViewModel(
                     mirroredGroupPostId = ensureMirroredGroupPost(channelId, channelChat, post, linkedGroupId)
                     val replyTargetId = replyToComment?.mirroredGroupReplyId?.takeIf { it.isNotBlank() }
                         ?: mirroredGroupPostId
-                    val replySnippet = replyToComment?.text?.takeIf { it.isNotBlank() }
+                    val rawReplySnippet = replyToComment?.text?.takeIf { it.isNotBlank() }
                         ?: post.text.ifBlank { "Публикация канала" }
+                    val replySnippet = sanitizeDisplayOrDecrypted(rawReplySnippet, "Публикация канала")
+                        ?: "Публикация канала"
                     val groupReplyId = java.util.UUID.randomUUID().toString()
                     val groupReplyMsg = Message(
                         id = groupReplyId,
                         chatId = linkedGroupId,
                         senderId = senderId,
-                        text = signalProtocolManager.encryptMessage(cleanText),
+                        text = cleanText,
                         mediaPath = mediaPath,
                         mediaType = mediaType,
                         documentData = documentData,

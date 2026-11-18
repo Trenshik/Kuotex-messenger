@@ -57,6 +57,12 @@ import org.koin.android.ext.android.inject
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by inject()
     private var isAppReady = false
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val setOnlineRunnable = Runnable {
+        viewModel.setConnectionStatus(ConnectionStatus.ONLINE)
+    }
 
     // Ask for POST_NOTIFICATIONS permission
     private val requestPermissionLauncher = registerForActivityResult(
@@ -209,37 +215,44 @@ class MainActivity : ComponentActivity() {
                 viewModel.setPendingOpenStreamHostId(hostId)
             }
 
-            val connectivityManager = getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            
+            val cm = applicationContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            connectivityManager = cm
+
             // Check initial network state
-            val activeNet = connectivityManager.activeNetwork
-            val caps = connectivityManager.getNetworkCapabilities(activeNet)
+            val activeNet = cm?.activeNetwork
+            val caps = cm?.getNetworkCapabilities(activeNet)
             val isInitiallyOnline = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
             viewModel.setConnectionStatus(if (isInitiallyOnline) ConnectionStatus.ONLINE else ConnectionStatus.OFFLINE)
 
-            val networkRequest = NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                .build()
+            if (cm != null && networkCallback == null) {
+                val networkRequest = NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    .build()
 
-            val networkCallback = object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: Network) {
-                    viewModel.setConnectionStatus(ConnectionStatus.CONNECTING)
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                        viewModel.setConnectionStatus(ConnectionStatus.ONLINE)
-                    }, 600)
-                }
-                override fun onLost(network: Network) {
-                    viewModel.setConnectionStatus(ConnectionStatus.OFFLINE)
-                }
-                override fun onUnavailable() {
-                    viewModel.setConnectionStatus(ConnectionStatus.OFFLINE)
-                }
-            }
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        viewModel.setConnectionStatus(ConnectionStatus.CONNECTING)
+                        mainHandler.removeCallbacks(setOnlineRunnable)
+                        mainHandler.postDelayed(setOnlineRunnable, 600)
+                    }
 
-            try {
-                connectivityManager.registerNetworkCallback(networkRequest, networkCallback)
-            } catch (e: Exception) {
-                e.printStackTrace()
+                    override fun onLost(network: Network) {
+                        mainHandler.removeCallbacks(setOnlineRunnable)
+                        viewModel.setConnectionStatus(ConnectionStatus.OFFLINE)
+                    }
+
+                    override fun onUnavailable() {
+                        mainHandler.removeCallbacks(setOnlineRunnable)
+                        viewModel.setConnectionStatus(ConnectionStatus.OFFLINE)
+                    }
+                }
+                networkCallback = callback
+
+                try {
+                    cm.registerNetworkCallback(networkRequest, callback)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             enableEdgeToEdge()
@@ -336,6 +349,18 @@ val isDarkThemeEnabled by viewModel.isDarkThemeEnabled.collectAsState()
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(setOnlineRunnable)
+        val callback = networkCallback
+        val cm = connectivityManager
+        if (callback != null && cm != null) {
+            try {
+                cm.unregisterNetworkCallback(callback)
+            } catch (_: Exception) {
+                // Ignore if already unregistered or unavailable
+            }
+        }
+        networkCallback = null
+        connectivityManager = null
         super.onDestroy()
         com.example.utils.CrashReporter.logLifecycleEvent("onDestroy")
     }

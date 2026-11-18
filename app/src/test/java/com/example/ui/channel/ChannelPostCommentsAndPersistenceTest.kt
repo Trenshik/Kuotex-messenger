@@ -282,4 +282,45 @@ class ChannelPostCommentsAndPersistenceTest {
         assertFalse(messageDao.observeMessageById(mirroredId).first()!!.isPinned)
         assertNull(chatDao.getChatById(groupId)!!.pinnedMessageId)
     }
+
+    @Test
+    fun `signalProtocolManager decrypts e2e channel post and reply snippets cleanly`() {
+        val signal = com.example.crypto.SignalProtocolManager()
+        val encrypted = signal.encryptMessage("Всем здарова")
+        assertTrue(encrypted.startsWith("e2e:"))
+        assertEquals("Всем здарова", signal.decryptMessage(encrypted))
+        assertEquals("Обычный текст", signal.decryptMessage("Обычный текст"))
+    }
+
+    @Test
+    fun `mainActivity unregisters ConnectivityManager NetworkCallback in onDestroy`() {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val shadowCm = org.robolectric.Shadows.shadowOf(cm)
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {}
+        cm.registerNetworkCallback(android.net.NetworkRequest.Builder().build(), callback)
+        assertTrue(shadowCm.networkCallbacks.contains(callback))
+
+        val activity = com.example.MainActivity()
+        val cmField = com.example.MainActivity::class.java.getDeclaredField("connectivityManager").apply {
+            isAccessible = true
+            set(activity, cm)
+        }
+        val cbField = com.example.MainActivity::class.java.getDeclaredField("networkCallback").apply {
+            isAccessible = true
+            set(activity, callback)
+        }
+
+        val onDestroyMethod = com.example.MainActivity::class.java.getDeclaredMethod("onDestroy").apply {
+            isAccessible = true
+        }
+        try {
+            onDestroyMethod.invoke(activity)
+        } catch (_: Throwable) {
+            // super.onDestroy() without full Activity attach may throw, callback cleanup runs before super
+        }
+
+        assertFalse(shadowCm.networkCallbacks.contains(callback))
+        assertNull(cmField.get(activity))
+        assertNull(cbField.get(activity))
+    }
 }
