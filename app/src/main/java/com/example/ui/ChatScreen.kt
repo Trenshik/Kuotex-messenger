@@ -1258,11 +1258,31 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {
+                                            val replyAuthorName = remember(
+                                                replyMsg,
+                                                chat,
+                                                chats,
+                                                parentLinkedChannel,
+                                                groupMembers,
+                                                activeAccount
+                                            ) {
+                                                resolveMessageAuthorDisplayName(
+                                                    message = replyMsg,
+                                                    chat = chat,
+                                                    allChats = chats,
+                                                    parentLinkedChannel = parentLinkedChannel,
+                                                    groupMembers = groupMembers,
+                                                    activeAccount = activeAccount
+                                                )
+                                            }
                                             Text(
-                                                text = "В ответ ${replyMsg.senderId}",
+                                                text = "В ответ $replyAuthorName",
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.testTag("reply_banner_author")
                                             )
                                             Text(
                                                 text = customQuoteText ?: replyMsg.text,
@@ -1932,11 +1952,30 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
+                                val sheetReplyAuthorName = remember(
+                                    replyMsg,
+                                    chat,
+                                    chats,
+                                    parentLinkedChannel,
+                                    groupMembers,
+                                    activeAccount
+                                ) {
+                                    resolveMessageAuthorDisplayName(
+                                        message = replyMsg,
+                                        chat = chat,
+                                        allChats = chats,
+                                        parentLinkedChannel = parentLinkedChannel,
+                                        groupMembers = groupMembers,
+                                        activeAccount = activeAccount
+                                    )
+                                }
                                 Text(
-                                    text = replyMsg.senderId,
+                                    text = sheetReplyAuthorName,
                                     style = MaterialTheme.typography.labelMedium, 
                                     color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = customQuoteText ?: replyMsg.text, 
@@ -2743,10 +2782,17 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
 
         if (activeVideoNoteToView != null) {
             val vMsg = activeVideoNoteToView!!
-            val senderName = when {
-                vMsg.senderId == activeAccount?.id -> "Вы"
-                chat.isGroup -> groupMembers.find { it.userId == vMsg.senderId }?.userName ?: vMsg.senderId
-                else -> chat.title
+            val senderName = if (vMsg.senderId == activeAccount?.id && vMsg.senderIdentityType != "CHANNEL" && vMsg.senderIdentityType != "GROUP") {
+                "Вы"
+            } else {
+                resolveMessageAuthorDisplayName(
+                    message = vMsg,
+                    chat = chat,
+                    allChats = chats,
+                    parentLinkedChannel = parentLinkedChannel,
+                    groupMembers = groupMembers,
+                    activeAccount = activeAccount
+                )
             }
             var durText = "0:04"
             var videoPath: String? = vMsg.mediaPath
@@ -3182,14 +3228,28 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                         val authorTargetId = message.senderIdentityId?.takeIf { it.isNotBlank() } ?: message.senderId
 
                         if (isChannelOrAnonIdentity) {
-                            senderName = message.senderDisplayName?.takeIf { it.isNotBlank() } ?: chat.title
+                            senderName = resolveMessageAuthorDisplayName(
+                                message = message,
+                                chat = chat,
+                                allChats = chats,
+                                parentLinkedChannel = parentLinkedChannel,
+                                groupMembers = groupMembers,
+                                activeAccount = activeAccount
+                            )
                             if (senderCustomTag.isNullOrBlank() && message.senderIdentityType == "CHANNEL") {
                                 senderCustomTag = "канал"
                             }
                         } else if (!isMe) {
                             if (chat.isGroup) {
                                 val member = groupMembers.find { it.userId == message.senderId }
-                                senderName = message.senderDisplayName?.takeIf { it.isNotBlank() } ?: member?.userName ?: message.senderId
+                                senderName = resolveMessageAuthorDisplayName(
+                                    message = message,
+                                    chat = chat,
+                                    allChats = chats,
+                                    parentLinkedChannel = parentLinkedChannel,
+                                    groupMembers = groupMembers,
+                                    activeAccount = activeAccount
+                                )
                                 isBot = message.senderId.startsWith("bot_")
                                 if (senderCustomTag.isNullOrBlank()) {
                                     senderCustomTag = member?.customTitle?.takeIf { it.isNotBlank() }
@@ -3319,11 +3379,36 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         message.commentCount,
                                         postCommentCounts[message.id] ?: 0
                                     )
+                                    val repliedTargetMessage = remember(message.replyToMessageId, messages) {
+                                        message.replyToMessageId?.let { targetId ->
+                                            messages.find { it.id == targetId }
+                                        }
+                                    }
+                                    val replyQuoteAuthorName = remember(
+                                        message.replyToMessageId,
+                                        repliedTargetMessage,
+                                        chat,
+                                        chats,
+                                        parentLinkedChannel,
+                                        groupMembers,
+                                        activeAccount
+                                    ) {
+                                        resolveReplyQuoteAuthorName(
+                                            message = message,
+                                            repliedMessage = repliedTargetMessage,
+                                            chat = chat,
+                                            allChats = chats,
+                                            parentLinkedChannel = parentLinkedChannel,
+                                            groupMembers = groupMembers,
+                                            activeAccount = activeAccount
+                                        )
+                                    }
                                     MessageBubble(
                                         senderName = senderName,
                                         senderStatus = senderStatus,
                                         senderCustomTag = senderCustomTag,
                                         senderEmojiStatus = if (chat.isChannel && message.senderIdentityType == "CHANNEL") channelCustomization.emojiStatus else senderEmoji,
+                                        replyAuthorName = replyQuoteAuthorName,
                                         isGroupChat = chat.isGroup,
                                         showSenderHeader = chat.isGroup || (
                                             chat.isChannel && (
@@ -3400,10 +3485,17 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         },
                                         onImageClick = { clickedItem ->
                                             val allChatImages = messages.mapNotNull { msg ->
-                                                val msgSender = when {
-                                                    msg.senderId == activeAccount?.id -> "Вы"
-                                                    chat.isGroup -> groupMembers.find { it.userId == msg.senderId }?.userName ?: msg.senderId
-                                                    else -> chat.title
+                                                val msgSender = if (msg.senderId == activeAccount?.id && msg.senderIdentityType != "CHANNEL" && msg.senderIdentityType != "GROUP") {
+                                                    "Вы"
+                                                } else {
+                                                    resolveMessageAuthorDisplayName(
+                                                        message = msg,
+                                                        chat = chat,
+                                                        allChats = chats,
+                                                        parentLinkedChannel = parentLinkedChannel,
+                                                        groupMembers = groupMembers,
+                                                        activeAccount = activeAccount
+                                                    )
                                                 }
                                                 extractLightboxMediaItem(msg, msgSender, msg.senderId == activeAccount?.id)
                                             }
@@ -4429,10 +4521,15 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         val forwardItems = forwardMsgs.map { m ->
                                             val authorName = if (m.isForwarded && !m.forwardOriginalSenderName.isNullOrBlank()) {
                                                 m.forwardOriginalSenderName
-                                            } else if (m.senderId == activeAccount?.id) {
-                                                activeAccount?.displayName?.ifBlank { activeAccount?.username } ?: "Вы"
                                             } else {
-                                                chat.title
+                                                resolveMessageAuthorDisplayName(
+                                                    message = m,
+                                                    chat = chat,
+                                                    allChats = chats,
+                                                    parentLinkedChannel = parentLinkedChannel,
+                                                    groupMembers = groupMembers,
+                                                    activeAccount = activeAccount
+                                                )
                                             }
                                             Pair(m, authorName)
                                         }
@@ -4440,8 +4537,15 @@ fun ChatScreen(viewModel: AppViewModel, chatId: String, navController: NavContro
                                         val firstMsg = forwardMsgs.firstOrNull()
                                         val primarySenderName = if (firstMsg?.isForwarded == true && !firstMsg.forwardOriginalSenderName.isNullOrBlank()) {
                                             firstMsg.forwardOriginalSenderName
-                                        } else if (firstMsg?.senderId == activeAccount?.id) {
-                                            activeAccount?.displayName?.ifBlank { activeAccount?.username } ?: "Вы"
+                                        } else if (firstMsg != null) {
+                                            resolveMessageAuthorDisplayName(
+                                                message = firstMsg,
+                                                chat = chat,
+                                                allChats = chats,
+                                                parentLinkedChannel = parentLinkedChannel,
+                                                groupMembers = groupMembers,
+                                                activeAccount = activeAccount
+                                            )
                                         } else {
                                             chat.title
                                         }
@@ -5050,6 +5154,7 @@ fun MessageBubble(
     senderStatus: String? = null, 
     senderCustomTag: String? = null,
     senderEmojiStatus: String? = null,
+    replyAuthorName: String? = null,
     isGroupChat: Boolean = false,
     showSenderHeader: Boolean = isGroupChat,
     isBot: Boolean = false,
@@ -5455,10 +5560,13 @@ fun MessageBubble(
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
                                 Text(
-                                    text = if (channelAccentScheme != null && !senderName.isNullOrBlank()) senderName else "Reply",
+                                    text = replyAuthorName?.takeIf { it.isNotBlank() }
+                                        ?: if (channelAccentScheme != null && !senderName.isNullOrBlank()) senderName else "Reply",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = channelAccentScheme?.accentColor ?: if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = message.replyToMessageText,

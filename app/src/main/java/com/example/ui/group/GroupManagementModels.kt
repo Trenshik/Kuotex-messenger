@@ -5,6 +5,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.ui.Chat
 import com.example.ui.GroupMember
+import com.example.ui.Message
 import com.example.ui.UserAccount
 import com.example.ui.channel.ChannelCustomization
 import com.example.ui.channel.findCurrentChannelMember
@@ -368,4 +369,137 @@ fun resolveAvailableSendAsIdentities(
     }
 
     return result
+}
+
+fun resolveMessageAuthorDisplayName(
+    message: Message,
+    chat: Chat,
+    allChats: List<Chat> = emptyList(),
+    parentLinkedChannel: Chat? = null,
+    groupMembers: List<GroupMember> = emptyList(),
+    activeAccount: UserAccount? = null
+): String {
+    // 1. Explicit channel or group Send-As identity
+    if (message.senderIdentityType == "CHANNEL") {
+        val explicitName = message.senderDisplayName?.takeIf {
+            it.isNotBlank() && it != message.senderIdentityId && it != message.senderId
+        }
+        if (explicitName != null) return explicitName
+        val identityChat = message.senderIdentityId?.let { id ->
+            allChats.find { it.id == id }
+                ?: if (chat.id == id) chat else if (parentLinkedChannel?.id == id) parentLinkedChannel else null
+        }
+        if (identityChat != null && identityChat.title.isNotBlank()) return identityChat.title
+        if (chat.isChannel && chat.title.isNotBlank()) return chat.title
+        if (parentLinkedChannel != null && parentLinkedChannel.title.isNotBlank()) return parentLinkedChannel.title
+    }
+
+    if (message.senderIdentityType == "GROUP") {
+        val explicitName = message.senderDisplayName?.takeIf {
+            it.isNotBlank() && it != message.senderIdentityId && it != message.senderId
+        }
+        if (explicitName != null) return explicitName
+        val identityChat = message.senderIdentityId?.let { id ->
+            allChats.find { it.id == id } ?: if (chat.id == id) chat else null
+        }
+        if (identityChat != null && identityChat.title.isNotBlank()) return identityChat.title
+        if (chat.title.isNotBlank()) return chat.title
+    }
+
+    // 2. Implicit or legacy channel post (inside channel or mirrored into linked discussion group)
+    val matchesParentChannel = parentLinkedChannel != null && (
+        message.senderId == parentLinkedChannel.id ||
+            message.senderIdentityId == parentLinkedChannel.id ||
+            message.forwardOriginalSenderId == parentLinkedChannel.id
+        )
+    if (matchesParentChannel) {
+        val explicitName = message.senderDisplayName?.takeIf {
+            it.isNotBlank() && it != parentLinkedChannel!!.id && it != message.senderId
+        }
+        return explicitName ?: parentLinkedChannel!!.title.ifBlank { "Канал" }
+    }
+
+    if (chat.isChannel && message.senderIdentityType != "PERSONAL") {
+        val explicitName = message.senderDisplayName?.takeIf {
+            it.isNotBlank() && it != chat.id && it != message.senderId
+        }
+        if (explicitName != null) return explicitName
+        val identityChat = message.senderIdentityId?.let { id -> allChats.find { it.id == id } }
+        if (identityChat != null && identityChat.title.isNotBlank()) return identityChat.title
+        return chat.title.ifBlank { "Канал" }
+    }
+
+    if (message.senderId == chat.id || message.senderIdentityId == chat.id) {
+        val explicitName = message.senderDisplayName?.takeIf {
+            it.isNotBlank() && it != chat.id && it != message.senderId
+        }
+        return explicitName ?: chat.title.ifBlank { "Канал" }
+    }
+
+    // 3. Explicit senderDisplayName (covers Send-As personal posts and synced group messages)
+    message.senderDisplayName?.takeIf {
+        it.isNotBlank() && it != message.senderId && it != message.senderIdentityId
+    }?.let { return it }
+
+    // 4. Current user's personal messages
+    if (activeAccount != null && message.senderId == activeAccount.id) {
+        val accountName = activeAccount.displayName.ifBlank { activeAccount.username }
+        if (accountName.isNotBlank()) return accountName
+    }
+
+    // 5. Group/channel member lookup
+    if (chat.isGroup || chat.isChannel) {
+        val member = groupMembers.find { it.userId == message.senderId }
+        member?.userName?.takeIf { it.isNotBlank() && it != message.senderId }?.let { return it }
+    }
+
+    // 6. Chat/channel/bot lookup in chats list
+    allChats.find { it.id == message.senderIdentityId || it.id == message.senderId }
+        ?.title?.takeIf { it.isNotBlank() }?.let { return it }
+
+    // 7. Forwarded message original sender fallback
+    if (message.isForwarded && !message.forwardHideSender) {
+        message.forwardOriginalSenderName?.takeIf { it.isNotBlank() }?.let { return it }
+    }
+
+    // 8. Non-group/non-channel 1:1 chat fallback
+    if (!chat.isGroup && !chat.isChannel && chat.title.isNotBlank()) {
+        return chat.title
+    }
+
+    if (chat.isChannel && chat.title.isNotBlank()) {
+        return chat.title
+    }
+
+    return "Пользователь"
+}
+
+fun resolveReplyQuoteAuthorName(
+    message: Message,
+    repliedMessage: Message?,
+    chat: Chat,
+    allChats: List<Chat> = emptyList(),
+    parentLinkedChannel: Chat? = null,
+    groupMembers: List<GroupMember> = emptyList(),
+    activeAccount: UserAccount? = null
+): String? {
+    if (repliedMessage != null) {
+        return resolveMessageAuthorDisplayName(
+            message = repliedMessage,
+            chat = chat,
+            allChats = allChats,
+            parentLinkedChannel = parentLinkedChannel,
+            groupMembers = groupMembers,
+            activeAccount = activeAccount
+        )
+    }
+    if (chat.isChannel) {
+        return chat.title.takeIf { it.isNotBlank() }
+    }
+    if (chat.isGroup && parentLinkedChannel != null &&
+        (message.senderIdentityId == parentLinkedChannel.id || message.forwardOriginalSenderId == parentLinkedChannel.id)
+    ) {
+        return parentLinkedChannel.title.takeIf { it.isNotBlank() }
+    }
+    return null
 }

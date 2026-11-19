@@ -446,8 +446,13 @@ fun ChannelPostCommentsScreen(
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Column(modifier = Modifier.weight(1f)) {
+                                        val replyBannerAuthor = if (targetReply.isChannelIdentity) {
+                                            targetReply.senderName.takeIf { it.isNotBlank() && it != channelId } ?: channelTitle
+                                        } else {
+                                            targetReply.senderName.ifBlank { "Пользователь" }
+                                        }
                                         Text(
-                                            text = targetReply.senderName,
+                                            text = replyBannerAuthor,
                                             color = CommentsPurple,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
@@ -849,6 +854,7 @@ fun ChannelPostCommentsScreen(
                     items(comments, key = { it.id }) { comment ->
                         PostCommentBubble(
                             comment = comment,
+                            channelTitle = channelTitle,
                             channelAccentColor = channelScheme.accentColor,
                             channelEmojiStatus = if (comment.isChannelIdentity) channelCustomization.emojiStatus else null,
                             onReplyClick = { replyingToComment = comment }
@@ -1034,6 +1040,7 @@ private fun OriginalChannelPostPreviewRow(
 @Composable
 private fun PostCommentBubble(
     comment: ChannelPostCommentEntity,
+    channelTitle: String,
     channelAccentColor: Color,
     channelEmojiStatus: String?,
     onReplyClick: () -> Unit
@@ -1053,6 +1060,12 @@ private fun PostCommentBubble(
         } else null
     }
 
+    val resolvedSenderName = if (comment.isChannelIdentity) {
+        comment.senderName.takeIf { it.isNotBlank() && it != comment.channelId } ?: channelTitle
+    } else {
+        comment.senderName.ifBlank { "Пользователь" }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1062,7 +1075,7 @@ private fun PostCommentBubble(
     ) {
         CommentsMonogramAvatar(
             id = if (comment.isChannelIdentity) comment.channelId else comment.senderId,
-            title = comment.senderName,
+            title = resolvedSenderName,
             avatarUrl = comment.senderAvatarUrl,
             accentColor = if (comment.isChannelIdentity) channelAccentColor else CommentsPurple,
             size = 34.dp
@@ -1095,7 +1108,7 @@ private fun PostCommentBubble(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = comment.senderName,
+                            text = resolvedSenderName,
                             color = if (comment.isChannelIdentity) channelAccentColor else Color(0xFFFF9E66),
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
@@ -1125,8 +1138,12 @@ private fun PostCommentBubble(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            val resolvedQuoteAuthor = comment.replyToAuthorName
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { if (it == comment.channelId) channelTitle else it }
+                                ?: "Ответ"
                             Text(
-                                text = comment.replyToAuthorName ?: "Ответ",
+                                text = resolvedQuoteAuthor,
                                 color = CommentsPurple,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,

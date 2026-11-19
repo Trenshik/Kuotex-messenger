@@ -9,6 +9,8 @@ import com.example.ui.group.formatGroupSubtitle
 import com.example.ui.group.formatParticipantCount
 import com.example.ui.group.formatSubscriberCount
 import com.example.ui.group.resolveAvailableSendAsIdentities
+import com.example.ui.group.resolveMessageAuthorDisplayName
+import com.example.ui.group.resolveReplyQuoteAuthorName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -342,5 +344,147 @@ class GroupManagementPolicyTest {
         assertEquals("2 подписчика", formatSubscriberCount(2))
         assertEquals("5 подписчиков", formatSubscriberCount(5))
         assertEquals("12 подписчиков", formatSubscriberCount(12))
+    }
+
+    @Test
+    fun replyAuthorDisplayNameResolvesChannelTitleInsteadOfRawUid() {
+        val rawFirebaseUid = "7kOEGhwCt4Qfo3C2uAZj3Oq5KXK2"
+        val channel = Chat(
+            id = "c_test",
+            title = "тестовый канал",
+            isChannel = true,
+            linkedDiscussionGroupId = "g_test",
+            lastMessage = ""
+        )
+        val linkedGroup = Chat(
+            id = "g_test",
+            title = "тестовый канал Чат",
+            isGroup = true,
+            linkedChannelId = "c_test",
+            lastMessage = ""
+        )
+        val channelOwner = activeUser.copy(id = rawFirebaseUid, displayName = "FurryLounge")
+
+        // 1. Legacy or explicit channel post inside channel with raw UID as senderId
+        val channelPost = Message(
+            id = "m_post_1",
+            chatId = "c_test",
+            senderId = rawFirebaseUid,
+            text = "всем салам",
+            senderIdentityType = "CHANNEL",
+            senderIdentityId = "c_test",
+            senderDisplayName = null
+        )
+        assertEquals(
+            "тестовый канал",
+            resolveMessageAuthorDisplayName(
+                message = channelPost,
+                chat = channel,
+                allChats = listOf(channel, linkedGroup),
+                activeAccount = channelOwner
+            )
+        )
+
+        val legacyChannelPost = Message(
+            id = "m_post_legacy",
+            chatId = "c_test",
+            senderId = rawFirebaseUid,
+            text = "legacy post"
+        )
+        assertEquals(
+            "тестовый канал",
+            resolveMessageAuthorDisplayName(
+                message = legacyChannelPost,
+                chat = channel,
+                allChats = listOf(channel, linkedGroup),
+                activeAccount = channelOwner
+            )
+        )
+
+        // 2. Mirrored channel post inside linked discussion group
+        val mirroredPost = Message(
+            id = "m_mirror_1",
+            chatId = "g_test",
+            senderId = rawFirebaseUid,
+            text = "всем салам",
+            senderIdentityType = "CHANNEL",
+            senderIdentityId = "c_test",
+            forwardOriginalSenderId = "c_test",
+            forwardOriginalSenderName = "тестовый канал"
+        )
+        assertEquals(
+            "тестовый канал",
+            resolveMessageAuthorDisplayName(
+                message = mirroredPost,
+                chat = linkedGroup,
+                allChats = listOf(channel, linkedGroup),
+                parentLinkedChannel = channel,
+                activeAccount = channelOwner
+            )
+        )
+
+        // 3. Personal message inside discussion group with raw UID senderId
+        val groupMemberMsg = Message(
+            id = "m_grp_1",
+            chatId = "g_test",
+            senderId = rawFirebaseUid,
+            text = "привет",
+            senderIdentityType = "PERSONAL"
+        )
+        assertEquals(
+            "FurryLounge",
+            resolveMessageAuthorDisplayName(
+                message = groupMemberMsg,
+                chat = linkedGroup,
+                allChats = listOf(channel, linkedGroup),
+                parentLinkedChannel = channel,
+                activeAccount = channelOwner
+            )
+        )
+
+        // 4. Another group member missing activeAccount resolves from groupMembers (never raw UID)
+        val otherUid = "otherUid1234567890"
+        val otherMemberMsg = Message(
+            id = "m_grp_2",
+            chatId = "g_test",
+            senderId = otherUid,
+            text = "привет всем"
+        )
+        val members = listOf(
+            GroupMember(chatId = "g_test", userId = otherUid, userName = "Alex", isAdmin = false, role = "subscriber")
+        )
+        assertEquals(
+            "Alex",
+            resolveMessageAuthorDisplayName(
+                message = otherMemberMsg,
+                chat = linkedGroup,
+                allChats = listOf(channel, linkedGroup),
+                parentLinkedChannel = channel,
+                groupMembers = members,
+                activeAccount = channelOwner
+            )
+        )
+
+        // 5. Reply quote author inside bubble resolves channel title for reply to mirrored channel post
+        val replyBubble = Message(
+            id = "m_reply_1",
+            chatId = "g_test",
+            senderId = otherUid,
+            text = "согласен",
+            replyToMessageId = mirroredPost.id,
+            replyToMessageText = mirroredPost.text
+        )
+        assertEquals(
+            "тестовый канал",
+            resolveReplyQuoteAuthorName(
+                message = replyBubble,
+                repliedMessage = mirroredPost,
+                chat = linkedGroup,
+                allChats = listOf(channel, linkedGroup),
+                parentLinkedChannel = channel,
+                groupMembers = members,
+                activeAccount = channelOwner
+            )
+        )
     }
 }
