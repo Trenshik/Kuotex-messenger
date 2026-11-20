@@ -230,21 +230,24 @@ fun MyProfileScreen(viewModel: AppViewModel, navController: NavController) {
     val pinnedGiftsMap by com.example.data.ecosystem.KuoteXEcosystemFirestoreManager.pinnedGiftsMap.collectAsState()
     val catalogGifts by com.example.data.ecosystem.KuoteXEcosystemFirestoreManager.catalogGifts.collectAsState()
 
-    // Initialize gifts for current account if not already in ecosystem state
+    // Initialize gifts for current account if not already in ecosystem state and observe Firestore
     LaunchedEffect(activeAccount.id) {
         if (!pinnedGiftsMap.containsKey(activeAccount.id)) {
             val sampleDocs = com.example.ui.gifts.PinnedGift.samplePinnedGifts().map { it.toUserGiftDoc(activeAccount.id) }
             com.example.data.ecosystem.KuoteXEcosystemFirestoreManager.initializeUserGiftsIfEmpty(activeAccount.id, sampleDocs)
         }
+        com.example.data.ecosystem.KuoteXEcosystemFirestoreManager.observePinnedGifts(activeAccount.id).collect {}
     }
 
     val userPinnedDocs = pinnedGiftsMap[activeAccount.id] ?: emptyList()
     val displayedPinnedGifts = remember(userPinnedDocs, catalogGifts) {
         if (userPinnedDocs.isNotEmpty()) {
-            userPinnedDocs.mapNotNull { doc ->
-                val catalog = catalogGifts.find { it.catalogGiftId == doc.catalogGiftId }
-                com.example.ui.gifts.PinnedGift.fromUserGift(doc, catalog)
-            }
+            userPinnedDocs
+                .filter { it.isPinnedToHeader }
+                .map { doc ->
+                    val catalog = catalogGifts.find { it.catalogGiftId == doc.catalogGiftId }
+                    com.example.ui.gifts.PinnedGift.fromUserGift(doc, catalog)
+                }
         } else {
             emptyList()
         }

@@ -170,6 +170,7 @@ fun ProfileScreen(
     val presence = userPresences[chatId]
 
     val pinnedGiftsMap by ecosystemManager.pinnedGiftsMap.collectAsState()
+    val catalogGifts by ecosystemManager.catalogGifts.collectAsState()
     val userPinnedCollectibles by ecosystemManager.userPinnedCollectible.collectAsState()
     val collectibleMarketplace by ecosystemManager.collectibleMarketplaceGifts.collectAsState()
 
@@ -180,15 +181,16 @@ fun ProfileScreen(
     // Active pinned collectible gift next to username (e.g. Nail Bracelet #2095)
     val pinnedCollectible = userPinnedCollectibles[chatId] ?: collectibleMarketplace.find { it.ownerName == chatId || it.ownerName == chat.title }
 
-    // Initialize gifts for profile if not yet loaded in ecosystem state
+    // Initialize sample gifts if empty and observe real-time Firestore gifts for this profile
     LaunchedEffect(chatId) {
         if (!pinnedGiftsMap.containsKey(chatId) || pinnedGiftsMap[chatId].isNullOrEmpty()) {
             ecosystemManager.initializeUserGiftsIfEmpty(chatId)
         }
+        ecosystemManager.observePinnedGifts(chatId).collect {}
     }
 
     // User's received gifts
-    val userGifts = remember(pinnedGiftsMap, chatId) {
+    val userGifts = remember(pinnedGiftsMap, catalogGifts, chatId) {
         val rawList = pinnedGiftsMap[chatId] ?: emptyList()
         if (rawList.isEmpty()) {
             // Default sample gifts matching Telegram screenshots
@@ -262,18 +264,8 @@ fun ProfileScreen(
             )
         } else {
             rawList.map { doc ->
-                PinnedGift(
-                    id = doc.userGiftId,
-                    catalogGiftId = doc.catalogGiftId,
-                    title = doc.cachedTitle,
-                    senderName = doc.senderId,
-                    receiverId = doc.receiverId,
-                    upgradeLevel = doc.upgradeLevel,
-                    backdropColorHex = doc.cachedColorHex,
-                    emojiIcon = doc.cachedEmoji,
-                    message = doc.message,
-                    acquiredAt = doc.acquiredAt
-                )
+                val catalog = catalogGifts.find { it.catalogGiftId == doc.catalogGiftId }
+                PinnedGift.fromUserGift(doc, catalog)
             }
         }
     }

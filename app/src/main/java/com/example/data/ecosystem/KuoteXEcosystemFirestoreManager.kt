@@ -80,6 +80,10 @@ object KuoteXEcosystemFirestoreManager {
         return cleaned.ifBlank { "${fallbackPrefix}_${System.currentTimeMillis()}" }
     }
 
+    private fun isSampleGiftId(id: String): Boolean {
+        return id.startsWith("g_") || id.endsWith("_sample")
+    }
+
     // Local in-memory caching fallback for offline & fast UI rendering
     private val _currentUserState = MutableStateFlow<KuoteXUserDoc?>(null)
     val currentUserState: StateFlow<KuoteXUserDoc?> = _currentUserState.asStateFlow()
@@ -777,7 +781,7 @@ object KuoteXEcosystemFirestoreManager {
             val effectiveTargetId = if (targetUserId.isBlank() || targetUserId == "me") {
                 authUid
             } else {
-                sanitizeFirestoreId(targetUserId, authUid)
+                targetUserId.take(128)
             }
             val safeIdempotencyKey = sanitizeFirestoreId(idempotencyKey, "buy")
             val safeCatalogGiftId = sanitizeFirestoreId(catalogGiftId, "gift")
@@ -812,14 +816,16 @@ object KuoteXEcosystemFirestoreManager {
                     throw GiftSoldOutException("Gift is completely sold out")
                 }
 
-                // Determine pin count without cross-user /users/{targetId} reads/writes
+                // Determine pin count ignoring demo sample gifts and without cross-user /users/{targetId} reads/writes
                 val isSelfGift = effectiveTargetId == effectiveSenderId
                 val targetPinnedCount = if (isSelfGift) {
                     (senderSnap.getLong("pinned_gifts_count") ?: 0L).toInt()
                 } else {
-                    _pinnedGiftsMap.value[effectiveTargetId]?.count { it.isPinnedToHeader } ?: 0
+                    _pinnedGiftsMap.value[effectiveTargetId]?.count {
+                        it.isPinnedToHeader && !isSampleGiftId(it.userGiftId)
+                    } ?: 0
                 }
-                val shouldPin = pinToHeader && (targetPinnedCount < 6)
+                val shouldPin = pinToHeader && (targetPinnedCount < 12)
 
                 // 1. Deduct sender balance (and increment pinned_gifts_count if self-gift)
                 val newSenderBalance = senderBalance - giftPrice
@@ -921,7 +927,7 @@ object KuoteXEcosystemFirestoreManager {
 
             _pinnedGiftsMap.update { currentMap ->
                 val existing = currentMap[effectiveTargetId]?.toMutableList() ?: sampleUserGiftDocs(effectiveTargetId).toMutableList()
-                if (userGiftResult.isPinnedToHeader) {
+                if (existing.none { it.userGiftId == userGiftResult.userGiftId }) {
                     existing.add(0, userGiftResult)
                 }
                 currentMap + (effectiveTargetId to existing)
@@ -974,7 +980,8 @@ object KuoteXEcosystemFirestoreManager {
 
             val existing = _pinnedGiftsMap.value[safeTargetFallback]?.toMutableList()
                 ?: sampleUserGiftDocs(safeTargetFallback).toMutableList()
-            val shouldPin = pinToHeader && (existing.size < 12)
+            val realPinnedCount = existing.count { it.isPinnedToHeader && !isSampleGiftId(it.userGiftId) }
+            val shouldPin = pinToHeader && (realPinnedCount < 12)
 
             val localUserGift = KuoteXUserGiftDoc(
                 userGiftId = userGiftId,
@@ -982,7 +989,7 @@ object KuoteXEcosystemFirestoreManager {
                 senderId = if (isAnonymous) "anonymous" else senderUserId,
                 receiverId = safeTargetFallback,
                 isPinnedToHeader = shouldPin,
-                pinOrderIndex = if (shouldPin) 0 else -1,
+                pinOrderIndex = if (shouldPin) realPinnedCount else -1,
                 upgradeLevel = 1,
                 transferable = false,
                 message = message,
@@ -993,7 +1000,7 @@ object KuoteXEcosystemFirestoreManager {
                 cachedColorHex = catalogData.backdropColorHex
             )
 
-            if (shouldPin) {
+            if (existing.none { it.userGiftId == localUserGift.userGiftId }) {
                 existing.add(0, localUserGift)
             }
             _pinnedGiftsMap.update { currentMap ->
@@ -1643,25 +1650,38 @@ Result.failure(PaymentOutcomeUnknown(providerTxId, "Не удалось связ
      */
     fun observePinnedGifts(userId: String): Flow<List<KuoteXUserGiftDoc>> = callbackFlow {
         val db = getDbOrNull()
-        if (db == null || currentAuthUid().isNullOrBlank() || userId.isBlank()) {
+        val authUid = currentAuthUid()
+        if (db == null || authUid.isNullOrBlank() || userId.isBlank()) {
             trySend(_pinnedGiftsMap.value[userId] ?: emptyList())
             close()
             return@callbackFlow
         }
-        val listener = db.collection(COLLECTION_USER_GIFTS)
-            .whereEqualTo("receiver_id", userId)
-            .whereEqualTo("is_pinned_to_header", true)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    handleFirestoreError(error, OperationType.LIST, COLLECTION_USER_GIFTS)
-                    trySend(_pinnedGiftsMap.value[userId] ?: emptyList())
-                    return@addSnapshotListener
-                }
-                val gifts = snapshot?.documents?.mapNotNull { it.toObject(KuoteXUserGiftDoc::class.java) } ?: emptyList()
-                val sorted = gifts.sortedBy { it.pinOrderIndex }
-                _pinnedGiftsMap.update { it + (userId to sorted) }
-                trySend(sorted)
+        val query = if (userId == authUid) {
+            db.collection(COLLECTION_USER_GIFTS)
+                .whereEqualTo("receiver_id", userId)
+        } else {
+            db.collection(COLLECTION_USER_GIFTS)
+                .whereEqualTo("receiver_id", userId)
+                .whereEqualTo("is_pinned_to_header", true)
+        }
+        val listener = query.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                handleFirestoreError(error, OperationType.LIST, COLLECTION_USER_GIFTS)
+                trySend(_pinnedGiftsMap.value[userId] ?: emptyList())
+                return@addSnapshotListener
             }
+            val remoteGifts = (snapshot?.documents?.mapNotNull { it.toObject(KuoteXUserGiftDoc::class.java) } ?: emptyList())
+                .sortedByDescending { it.acquiredAt }
+            val remoteIds = remoteGifts.mapTo(HashSet()) { it.userGiftId }
+            var mergedResult: List<KuoteXUserGiftDoc> = remoteGifts
+            _pinnedGiftsMap.update { currentMap ->
+                val existing = currentMap[userId] ?: sampleUserGiftDocs(userId)
+                val retained = existing.filter { it.userGiftId !in remoteIds }
+                mergedResult = remoteGifts + retained
+                currentMap + (userId to mergedResult)
+            }
+            trySend(mergedResult)
+        }
 
         awaitClose { listener.remove() }
     }
