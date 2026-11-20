@@ -75,6 +75,11 @@ object KuoteXEcosystemFirestoreManager {
         return runCatching { FirebaseAuth.getInstance().currentUser?.uid }.getOrNull()
     }
 
+    private fun sanitizeFirestoreId(raw: String, fallbackPrefix: String): String {
+        val cleaned = raw.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(128)
+        return cleaned.ifBlank { "${fallbackPrefix}_${System.currentTimeMillis()}" }
+    }
+
     // Local in-memory caching fallback for offline & fast UI rendering
     private val _currentUserState = MutableStateFlow<KuoteXUserDoc?>(null)
     val currentUserState: StateFlow<KuoteXUserDoc?> = _currentUserState.asStateFlow()
@@ -412,19 +417,21 @@ object KuoteXEcosystemFirestoreManager {
         if (catalogSynced) return
         val db = getDbOrNull() ?: return
         if (currentAuthUid().isNullOrBlank()) return
+        var currentPath = COLLECTION_GIFTS_CATALOG
         try {
             for (gift in _catalogGifts.value) {
                 val docRef = db.collection(COLLECTION_GIFTS_CATALOG).document(gift.catalogGiftId)
+                currentPath = docRef.path
                 val snap = docRef.get().await()
                 if (!snap.exists()) {
-                    docRef.set(gift).await()
+                    docRef.set(gift.toFirestoreMap()).await()
                 }
             }
             catalogSynced = true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, COLLECTION_GIFTS_CATALOG)
+            handleFirestoreError(e, OperationType.WRITE, currentPath)
         }
     }
 
@@ -693,31 +700,36 @@ object KuoteXEcosystemFirestoreManager {
 
             syncCatalogIfAuthenticated()
 
+            val safeUsername = username.trim().ifBlank { "user" }.take(64)
+            val safeDisplayName = displayName.trim().ifBlank { "User" }.take(100)
             val userPath = "$COLLECTION_USERS/$userId"
             try {
                 val userRef = db.collection(COLLECTION_USERS).document(userId)
                 val snapshot = userRef.get().await()
 
                 if (!snapshot.exists()) {
+                    val now = System.currentTimeMillis()
                     val newUser = KuoteXUserDoc(
                         userId = userId,
-                        username = username,
-                        displayName = displayName,
+                        username = safeUsername,
+                        displayName = safeDisplayName,
                         balance = 1000L,
-                        role = role,
+                        role = "user",
                         vipStatus = false,
                         vipExpiration = 0L,
                         availableBoostVotes = 0,
                         allocatedBoosts = emptyList(),
                         pinnedGiftsCount = 0,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
+                        createdAt = now,
+                        updatedAt = now
                     )
-                    userRef.set(newUser).await()
+                    userRef.set(newUser.toFirestoreMap()).await()
                     _currentUserState.value = newUser
                 } else {
                     val userDoc = snapshot.toObject(KuoteXUserDoc::class.java)
-                    _currentUserState.value = userDoc
+                    if (userDoc != null) {
+                        _currentUserState.value = userDoc
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -752,30 +764,43 @@ object KuoteXEcosystemFirestoreManager {
         val userGiftId = "ug_${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val now = System.currentTimeMillis()
 
+        val safeTargetFallback = if (targetUserId.isBlank() || targetUserId == "me") {
+            currentAuthUid()?.takeIf { it.isNotBlank() } ?: senderUserId.ifBlank { "me" }
+        } else {
+            targetUserId
+        }
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val authUid = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val effectiveSenderId = authUid
+            val effectiveTargetId = if (targetUserId.isBlank() || targetUserId == "me") {
+                authUid
+            } else {
+                sanitizeFirestoreId(targetUserId, authUid)
+            }
+            val safeIdempotencyKey = sanitizeFirestoreId(idempotencyKey, "buy")
+            val safeCatalogGiftId = sanitizeFirestoreId(catalogGiftId, "gift")
+
             val userGiftResult = db.runTransaction { transaction ->
-                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(idempotencyKey)
+                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdempotencyKey)
                 val idemSnap = transaction.get(idempotencyRef)
                 if (idemSnap.exists()) {
-                    throw DuplicateTransactionException("Idempotency key already processed: $idempotencyKey")
+                    throw DuplicateTransactionException("Idempotency key already processed: $safeIdempotencyKey")
                 }
 
-                val senderRef = db.collection(COLLECTION_USERS).document(senderUserId)
-                val targetRef = db.collection(COLLECTION_USERS).document(targetUserId)
-                val catalogRef = db.collection(COLLECTION_GIFTS_CATALOG).document(catalogGiftId)
+                val senderRef = db.collection(COLLECTION_USERS).document(effectiveSenderId)
+                val catalogRef = db.collection(COLLECTION_GIFTS_CATALOG).document(safeCatalogGiftId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
                 val userGiftRef = db.collection(COLLECTION_USER_GIFTS).document(userGiftId)
 
                 val senderSnap = transaction.get(senderRef)
-                val targetSnap = transaction.get(targetRef)
                 val catalogSnap = transaction.get(catalogRef)
 
                 val senderBalance = senderSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: 1000L)
                 val catalogData = catalogSnap.toObject(KuoteXCatalogGiftDoc::class.java)
-                    ?: _catalogGifts.value.find { it.catalogGiftId == catalogGiftId }
-                    ?: throw IllegalArgumentException("Gift $catalogGiftId not found in catalog")
+                    ?: _catalogGifts.value.find { it.catalogGiftId == safeCatalogGiftId }
+                    ?: throw IllegalArgumentException("Gift $safeCatalogGiftId not found in catalog")
 
                 val giftPrice = catalogData.price
                 if (senderBalance < giftPrice) {
@@ -787,35 +812,60 @@ object KuoteXEcosystemFirestoreManager {
                     throw GiftSoldOutException("Gift is completely sold out")
                 }
 
-                // 1. Deduct sender balance
-                val newSenderBalance = senderBalance - giftPrice
-                transaction.update(senderRef, mapOf(
-                    "balance" to newSenderBalance,
-                    "updated_at" to now
-                ))
-
-                // 2. Decrement catalog supply if limited
-                if (availSupply > 0) {
-                    transaction.update(catalogRef, "available_supply", availSupply - 1)
+                // Determine pin count without cross-user /users/{targetId} reads/writes
+                val isSelfGift = effectiveTargetId == effectiveSenderId
+                val targetPinnedCount = if (isSelfGift) {
+                    (senderSnap.getLong("pinned_gifts_count") ?: 0L).toInt()
+                } else {
+                    _pinnedGiftsMap.value[effectiveTargetId]?.count { it.isPinnedToHeader } ?: 0
                 }
-
-                // 3. Pin logic for receiver profile
-                val targetPinnedCount = (targetSnap.getLong("pinned_gifts_count") ?: 0L).toInt()
                 val shouldPin = pinToHeader && (targetPinnedCount < 6)
 
-                if (shouldPin) {
-                    transaction.update(targetRef, mapOf(
-                        "pinned_gifts_count" to targetPinnedCount + 1,
+                // 1. Deduct sender balance (and increment pinned_gifts_count if self-gift)
+                val newSenderBalance = senderBalance - giftPrice
+                if (senderSnap.exists()) {
+                    val senderUpdates = mutableMapOf<String, Any>(
+                        "balance" to newSenderBalance,
                         "updated_at" to now
-                    ))
+                    )
+                    if (isSelfGift && shouldPin) {
+                        senderUpdates["pinned_gifts_count"] = (targetPinnedCount + 1).coerceAtMost(12)
+                    }
+                    transaction.update(senderRef, senderUpdates)
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveSenderId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = newSenderBalance.coerceIn(0L, 1000L),
+                        role = "user",
+                        pinnedGiftsCount = if (isSelfGift && shouldPin) 1 else 0,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(senderRef, fallbackUser.toFirestoreMap())
                 }
 
-                // 4. Create User Gift Document
+                // 2. Decrement catalog supply if limited (create doc if catalog wasn't synced yet)
+                if (availSupply > 0) {
+                    if (catalogSnap.exists()) {
+                        transaction.update(catalogRef, "available_supply", availSupply - 1)
+                    } else {
+                        transaction.set(
+                            catalogRef,
+                            catalogData.copy(availableSupply = availSupply - 1).toFirestoreMap()
+                        )
+                    }
+                } else if (!catalogSnap.exists()) {
+                    transaction.set(catalogRef, catalogData.toFirestoreMap())
+                }
+
+                // 3. Create User Gift Document
                 val userGiftDoc = KuoteXUserGiftDoc(
                     userGiftId = userGiftId,
-                    catalogGiftId = catalogGiftId,
-                    senderId = if (isAnonymous) "anonymous" else senderUserId,
-                    receiverId = targetUserId,
+                    catalogGiftId = safeCatalogGiftId,
+                    senderId = if (isAnonymous) "anonymous" else effectiveSenderId,
+                    receiverId = effectiveTargetId,
                     isPinnedToHeader = shouldPin,
                     pinOrderIndex = if (shouldPin) targetPinnedCount else -1,
                     upgradeLevel = 1,
@@ -827,57 +877,58 @@ object KuoteXEcosystemFirestoreManager {
                     cachedEmoji = catalogData.emojiIcon,
                     cachedColorHex = catalogData.backdropColorHex
                 )
-                transaction.set(userGiftRef, userGiftDoc)
+                transaction.set(userGiftRef, userGiftDoc.toFirestoreMap())
 
-                // 5. Append Immutable Ledger Record
+                // 4. Append Immutable Ledger Record
                 val ledgerDoc = KuoteXLedgerTxDoc(
                     txId = txId,
-                    idempotencyKey = idempotencyKey,
+                    idempotencyKey = safeIdempotencyKey,
                     type = LedgerTransactionType.GIFT_PURCHASE.value,
-                    fromUserId = senderUserId,
-                    toUserId = targetUserId,
+                    fromUserId = effectiveSenderId,
+                    toUserId = effectiveTargetId,
                     amount = giftPrice,
                     fee = 0L,
                     status = LedgerTransactionStatus.COMMITTED.value,
                     metadata = mapOf(
-                        "catalog_gift_id" to catalogGiftId,
+                        "catalog_gift_id" to safeCatalogGiftId,
                         "user_gift_id" to userGiftId,
                         "is_pinned" to shouldPin
                     ),
                     createdAt = now
                 )
-                transaction.set(ledgerRef, ledgerDoc)
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
 
-                // 6. Mark idempotency key
+                // 5. Mark idempotency key
                 transaction.set(idempotencyRef, mapOf(
                     "tx_id" to txId,
-                    "user_id" to senderUserId,
+                    "user_id" to effectiveSenderId,
                     "created_at" to now
                 ))
 
                 userGiftDoc
             }.await()
 
-            val purchasedPrice = _catalogGifts.value.find { g -> g.catalogGiftId == catalogGiftId }?.price ?: 100L
+            val purchasedPrice = _catalogGifts.value.find { g -> g.catalogGiftId == safeCatalogGiftId }?.price ?: 100L
             // Update local state
+            saveCachedBalance(effectiveSenderId, ((_currentUserState.value?.balance ?: 1000L) - purchasedPrice).coerceAtLeast(0L))
             _currentUserState.update { current ->
                 current?.let {
-                    if (it.userId == senderUserId) {
+                    if (it.userId == effectiveSenderId) {
                         it.copy(balance = (it.balance - purchasedPrice).coerceAtLeast(0L))
                     } else it
                 }
             }
 
             _pinnedGiftsMap.update { currentMap ->
-                val existing = currentMap[targetUserId]?.toMutableList() ?: sampleUserGiftDocs(targetUserId).toMutableList()
+                val existing = currentMap[effectiveTargetId]?.toMutableList() ?: sampleUserGiftDocs(effectiveTargetId).toMutableList()
                 if (userGiftResult.isPinnedToHeader) {
                     existing.add(0, userGiftResult)
                 }
-                currentMap + (targetUserId to existing)
+                currentMap + (effectiveTargetId to existing)
             }
 
             com.example.ui.rating.UserRatingManager.recordDirectGiftPurchase(
-                senderUserId = senderUserId,
+                senderUserId = effectiveSenderId,
                 starsSpent = purchasedPrice.toInt()
             )
 
@@ -921,15 +972,15 @@ object KuoteXEcosystemFirestoreManager {
                 }
             }
 
-            val existing = _pinnedGiftsMap.value[targetUserId]?.toMutableList()
-                ?: sampleUserGiftDocs(targetUserId).toMutableList()
+            val existing = _pinnedGiftsMap.value[safeTargetFallback]?.toMutableList()
+                ?: sampleUserGiftDocs(safeTargetFallback).toMutableList()
             val shouldPin = pinToHeader && (existing.size < 12)
 
             val localUserGift = KuoteXUserGiftDoc(
                 userGiftId = userGiftId,
                 catalogGiftId = catalogGiftId,
                 senderId = if (isAnonymous) "anonymous" else senderUserId,
-                receiverId = targetUserId,
+                receiverId = safeTargetFallback,
                 isPinnedToHeader = shouldPin,
                 pinOrderIndex = if (shouldPin) 0 else -1,
                 upgradeLevel = 1,
@@ -946,7 +997,7 @@ object KuoteXEcosystemFirestoreManager {
                 existing.add(0, localUserGift)
             }
             _pinnedGiftsMap.update { currentMap ->
-                currentMap + (targetUserId to existing)
+                currentMap + (safeTargetFallback to existing)
             }
 
             com.example.ui.rating.UserRatingManager.recordDirectGiftPurchase(
@@ -1027,14 +1078,16 @@ object KuoteXEcosystemFirestoreManager {
 
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safeIdempotencyKey = sanitizeFirestoreId(idempotencyKey, "vip")
             val updatedUser = db.runTransaction { transaction ->
-                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(idempotencyKey)
+                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdempotencyKey)
                 if (transaction.get(idempotencyRef).exists()) {
                     throw DuplicateTransactionException("Idempotency key already processed")
                 }
 
-                val userRef = db.collection(COLLECTION_USERS).document(userId)
+                val userRef = db.collection(COLLECTION_USERS).document(effectiveUserId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
                 val userSnap = transaction.get(userRef)
 
@@ -1049,40 +1102,54 @@ object KuoteXEcosystemFirestoreManager {
                 val newVotes = currentVotes + (4 * months)
 
                 val newBalance = currentBalance - price
-
-                transaction.update(userRef, mapOf(
-                    "balance" to newBalance,
-                    "vip_status" to true,
-                    "vip_expiration" to newVipExp,
-                    "available_boost_votes" to newVotes,
-                    "updated_at" to now
-                ))
-
-                // Immutable Ledger Entry
-                val ledgerDoc = KuoteXLedgerTxDoc(
-                    txId = txId,
-                    idempotencyKey = idempotencyKey,
-                    type = LedgerTransactionType.VIP_SUBSCRIPTION.value,
-                    fromUserId = userId,
-                    toUserId = "system_kuotex_vip",
-                    amount = price,
-                    status = LedgerTransactionStatus.COMMITTED.value,
-                    metadata = mapOf("months" to months, "vip_expiration" to newVipExp),
-                    createdAt = now
-                )
-                transaction.set(ledgerRef, ledgerDoc)
-
-                val authUid = currentAuthUid() ?: userId
-                transaction.set(idempotencyRef, mapOf("tx_id" to txId, "user_id" to authUid, "created_at" to now))
-
-                val userDoc = userSnap.toObject(KuoteXUserDoc::class.java) ?: KuoteXUserDoc(userId = userId)
-                userDoc.copy(
+                val baseDoc = userSnap.toObject(KuoteXUserDoc::class.java)
+                    ?: KuoteXUserDoc(
+                        userId = effectiveUserId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        createdAt = now
+                    )
+                val updatedDoc = baseDoc.copy(
+                    userId = effectiveUserId,
                     balance = newBalance,
                     vipStatus = true,
                     vipExpiration = newVipExp,
                     availableBoostVotes = newVotes,
                     updatedAt = now
                 )
+
+                if (userSnap.exists()) {
+                    transaction.update(userRef, mapOf(
+                        "balance" to newBalance,
+                        "vip_status" to true,
+                        "vip_expiration" to newVipExp,
+                        "available_boost_votes" to newVotes,
+                        "updated_at" to now
+                    ))
+                } else {
+                    transaction.set(
+                        userRef,
+                        updatedDoc.copy(balance = newBalance.coerceIn(0L, 1000L), role = "user").toFirestoreMap()
+                    )
+                }
+
+                // Immutable Ledger Entry
+                val ledgerDoc = KuoteXLedgerTxDoc(
+                    txId = txId,
+                    idempotencyKey = safeIdempotencyKey,
+                    type = LedgerTransactionType.VIP_SUBSCRIPTION.value,
+                    fromUserId = effectiveUserId,
+                    toUserId = "system_kuotex_vip",
+                    amount = price,
+                    status = LedgerTransactionStatus.COMMITTED.value,
+                    metadata = mapOf("months" to months, "vip_expiration" to newVipExp),
+                    createdAt = now
+                )
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
+
+                transaction.set(idempotencyRef, mapOf("tx_id" to txId, "user_id" to effectiveUserId, "created_at" to now))
+
+                updatedDoc
             }.await()
 
             _currentUserState.value = updatedUser
@@ -1131,10 +1198,12 @@ object KuoteXEcosystemFirestoreManager {
 
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safeChannelId = sanitizeFirestoreId(channelId, "chan")
             val updatedChannel = db.runTransaction { transaction ->
-                val userRef = db.collection(COLLECTION_USERS).document(userId)
-                val channelRef = db.collection(COLLECTION_CHANNELS).document(channelId)
+                val userRef = db.collection(COLLECTION_USERS).document(effectiveUserId)
+                val channelRef = db.collection(COLLECTION_CHANNELS).document(safeChannelId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
 
                 val userSnap = transaction.get(userRef)
@@ -1142,7 +1211,7 @@ object KuoteXEcosystemFirestoreManager {
 
                 val userDoc = userSnap.toObject(KuoteXUserDoc::class.java)
                     ?: _currentUserState.value
-                    ?: throw IllegalArgumentException("User document $userId not found")
+                    ?: throw IllegalArgumentException("User document $effectiveUserId not found")
 
                 // Privilege Validation
                 if (!userDoc.hasBoostPrivilege()) {
@@ -1158,7 +1227,7 @@ object KuoteXEcosystemFirestoreManager {
 
                 // Update allocated boosts list
                 val currentAllocated = userDoc.allocatedBoosts.toMutableList()
-                val existingIdx = currentAllocated.indexOfFirst { it.channelId == channelId }
+                val existingIdx = currentAllocated.indexOfFirst { it.channelId == safeChannelId }
                 if (existingIdx >= 0) {
                     val old = currentAllocated[existingIdx]
                     currentAllocated[existingIdx] = old.copy(
@@ -1166,14 +1235,35 @@ object KuoteXEcosystemFirestoreManager {
                         boostedAt = now
                     )
                 } else {
-                    currentAllocated.add(AllocatedBoost(channelId = channelId, votesCount = votesToApply, boostedAt = now))
+                    currentAllocated.add(AllocatedBoost(channelId = safeChannelId, votesCount = votesToApply, boostedAt = now))
                 }
 
-                transaction.update(userRef, mapOf(
-                    "available_boost_votes" to newAvailableVotes,
-                    "allocated_boosts" to currentAllocated,
-                    "updated_at" to now
-                ))
+                val serializedBoosts = currentAllocated.take(50).map { boost ->
+                    mapOf(
+                        "channel_id" to boost.channelId,
+                        "votes_count" to boost.votesCount,
+                        "boosted_at" to boost.boostedAt
+                    )
+                }
+                if (userSnap.exists()) {
+                    transaction.update(userRef, mapOf(
+                        "available_boost_votes" to newAvailableVotes,
+                        "allocated_boosts" to serializedBoosts,
+                        "updated_at" to now
+                    ))
+                } else {
+                    transaction.set(
+                        userRef,
+                        userDoc.copy(
+                            userId = effectiveUserId,
+                            balance = userDoc.balance.coerceIn(0L, 1000L),
+                            role = "user",
+                            availableBoostVotes = newAvailableVotes,
+                            allocatedBoosts = currentAllocated,
+                            updatedAt = now
+                        ).toFirestoreMap()
+                    )
+                }
 
                 // Recalculate Channel Level Progression
                 val currentVotes = (channelSnap.getLong("current_votes") ?: 0L).toInt()
@@ -1182,7 +1272,7 @@ object KuoteXEcosystemFirestoreManager {
                 val nextRequirement = KuoteXBoostProgression.nextLevelRequirement(totalVotes)
 
                 val channelDoc = KuoteXChannelDoc(
-                    channelId = channelId,
+                    channelId = safeChannelId,
                     title = channelSnap.getString("title") ?: "Канал",
                     currentVotes = totalVotes,
                     level = newLevel,
@@ -1194,21 +1284,21 @@ object KuoteXEcosystemFirestoreManager {
                     updatedAt = now
                 )
 
-                transaction.set(channelRef, channelDoc, SetOptions.merge())
+                transaction.set(channelRef, channelDoc.toFirestoreMap(), SetOptions.merge())
 
                 // Immutable Ledger entry
                 val ledgerDoc = KuoteXLedgerTxDoc(
                     txId = txId,
-                    idempotencyKey = "boost_${userId}_${channelId}_${now}",
+                    idempotencyKey = sanitizeFirestoreId("boost_${effectiveUserId}_${safeChannelId}_${now}", "boost"),
                     type = LedgerTransactionType.CHANNEL_BOOST.value,
-                    fromUserId = userId,
-                    toUserId = channelId,
+                    fromUserId = effectiveUserId,
+                    toUserId = safeChannelId,
                     amount = votesToApply.toLong(),
                     status = LedgerTransactionStatus.COMMITTED.value,
                     metadata = mapOf("votes" to votesToApply, "channel_level" to newLevel),
                     createdAt = now
                 )
-                transaction.set(ledgerRef, ledgerDoc)
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
 
                 channelDoc
             }.await()
@@ -1273,10 +1363,12 @@ object KuoteXEcosystemFirestoreManager {
 
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safeUserGiftId = sanitizeFirestoreId(userGiftId, "ug")
             val updatedUserGift = db.runTransaction { transaction ->
-                val userRef = db.collection(COLLECTION_USERS).document(userId)
-                val giftRef = db.collection(COLLECTION_USER_GIFTS).document(userGiftId)
+                val userRef = db.collection(COLLECTION_USERS).document(effectiveUserId)
+                val giftRef = db.collection(COLLECTION_USER_GIFTS).document(safeUserGiftId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
 
                 val userSnap = transaction.get(userRef)
@@ -1288,30 +1380,49 @@ object KuoteXEcosystemFirestoreManager {
                 }
 
                 val currentGift = giftSnap.toObject(KuoteXUserGiftDoc::class.java)
-                    ?: _pinnedGiftsMap.value[userId]?.find { it.userGiftId == userGiftId }
-                    ?: throw IllegalArgumentException("User gift $userGiftId not found")
+                    ?: (_pinnedGiftsMap.value[effectiveUserId] ?: _pinnedGiftsMap.value[userId])?.find { it.userGiftId == safeUserGiftId }
+                    ?: throw IllegalArgumentException("User gift $safeUserGiftId not found")
 
                 val newLevel = (currentGift.upgradeLevel + 1).coerceAtMost(5)
                 val upgradedDoc = currentGift.copy(
                     upgradeLevel = newLevel
                 )
 
-                transaction.update(userRef, "balance", currentBalance - upgradeCostStars)
-                transaction.set(giftRef, upgradedDoc, SetOptions.merge())
+                val newBalance = currentBalance - upgradeCostStars
+                if (userSnap.exists()) {
+                    transaction.update(userRef, mapOf("balance" to newBalance, "updated_at" to now))
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveUserId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = newBalance.coerceIn(0L, 1000L),
+                        role = "user",
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(userRef, fallbackUser.toFirestoreMap())
+                }
+
+                if (giftSnap.exists() && giftSnap.getString("receiver_id") == effectiveUserId) {
+                    transaction.update(giftRef, mapOf("upgrade_level" to newLevel))
+                } else if (!giftSnap.exists() && (upgradedDoc.isAnonymous || upgradedDoc.senderId == effectiveUserId)) {
+                    transaction.set(giftRef, upgradedDoc.copy(receiverId = effectiveUserId).toFirestoreMap())
+                }
 
                 // Immutable Ledger
                 val ledgerDoc = KuoteXLedgerTxDoc(
                     txId = txId,
-                    idempotencyKey = "upg_${userGiftId}_lvl${newLevel}_$now",
+                    idempotencyKey = sanitizeFirestoreId("upg_${safeUserGiftId}_lvl${newLevel}_$now", "upg"),
                     type = LedgerTransactionType.GIFT_UPGRADE.value,
-                    fromUserId = userId,
+                    fromUserId = effectiveUserId,
                     toUserId = "system_gift_vault",
                     amount = upgradeCostStars,
                     status = LedgerTransactionStatus.COMMITTED.value,
-                    metadata = mapOf("user_gift_id" to userGiftId, "new_level" to newLevel),
+                    metadata = mapOf("user_gift_id" to safeUserGiftId, "new_level" to newLevel),
                     createdAt = now
                 )
-                transaction.set(ledgerRef, ledgerDoc)
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
 
                 upgradedDoc
             }.await()
@@ -1401,23 +1512,26 @@ object KuoteXEcosystemFirestoreManager {
 
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safePollId = sanitizeFirestoreId(pollId, "poll")
+            val effectiveVoteDocId = "${safePollId}_${effectiveUserId}"
             val voteDoc = db.runTransaction { transaction ->
-                val voteRef = db.collection(COLLECTION_POLL_VOTES).document(voteDocId)
+                val voteRef = db.collection(COLLECTION_POLL_VOTES).document(effectiveVoteDocId)
                 val existingVote = transaction.get(voteRef)
                 if (existingVote.exists()) {
-                    throw DuplicateTransactionException("User $userId has already voted in poll $pollId")
+                    throw DuplicateTransactionException("User $effectiveUserId has already voted in poll $safePollId")
                 }
 
                 val newVote = KuoteXPollVoteDoc(
-                    voteId = voteDocId,
-                    pollId = pollId,
+                    voteId = effectiveVoteDocId,
+                    pollId = safePollId,
                     chatId = chatId,
-                    userId = userId,
+                    userId = effectiveUserId,
                     selectedOptionIds = selectedOptionIds,
                     timestamp = now
                 )
-                transaction.set(voteRef, newVote)
+                transaction.set(voteRef, newVote.toFirestoreMap())
                 newVote
             }.await()
 
@@ -1456,39 +1570,53 @@ object KuoteXEcosystemFirestoreManager {
 
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safeProviderTxId = sanitizeFirestoreId(providerTxId, "topup")
             val newBalance = db.runTransaction { transaction ->
-                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(providerTxId)
+                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeProviderTxId)
                 if (transaction.get(idempotencyRef).exists()) {
-                    throw DuplicateTransactionException("Provider tx $providerTxId already credited")
+                    throw DuplicateTransactionException("Provider tx $safeProviderTxId already credited")
                 }
 
-                val userRef = db.collection(COLLECTION_USERS).document(userId)
+                val userRef = db.collection(COLLECTION_USERS).document(effectiveUserId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
                 val userSnap = transaction.get(userRef)
 
                 val currentBalance = userSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: 1000L)
                 val updatedBalance = currentBalance + amount
 
-                transaction.update(userRef, mapOf(
-                    "balance" to updatedBalance,
-                    "updated_at" to now
-                ))
+                if (userSnap.exists()) {
+                    transaction.update(userRef, mapOf(
+                        "balance" to updatedBalance,
+                        "updated_at" to now
+                    ))
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveUserId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = updatedBalance.coerceIn(0L, 1000L),
+                        role = "user",
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(userRef, fallbackUser.toFirestoreMap())
+                }
 
                 val ledgerDoc = KuoteXLedgerTxDoc(
                     txId = txId,
-                    idempotencyKey = providerTxId,
+                    idempotencyKey = safeProviderTxId,
                     type = LedgerTransactionType.BALANCE_TOPUP.value,
                     fromUserId = "external_payment_gateway",
-                    toUserId = userId,
+                    toUserId = effectiveUserId,
                     amount = amount,
                     status = LedgerTransactionStatus.COMMITTED.value,
-                    metadata = mapOf("provider_tx_id" to providerTxId),
+                    metadata = mapOf("provider_tx_id" to safeProviderTxId),
                     createdAt = now
                 )
-                transaction.set(ledgerRef, ledgerDoc)
-                val authUid = currentAuthUid() ?: userId
-                transaction.set(idempotencyRef, mapOf("tx_id" to txId, "user_id" to authUid, "created_at" to now))
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
+                transaction.set(idempotencyRef, mapOf("tx_id" to txId, "user_id" to effectiveUserId, "created_at" to now))
 
                 updatedBalance
             }.await()
@@ -1609,46 +1737,60 @@ Result.failure(PaymentOutcomeUnknown(providerTxId, "Не удалось связ
         val now = System.currentTimeMillis()
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val effectiveUserId = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val safeIdemId = sanitizeFirestoreId("escrow_$proposalId", "escrow")
             val newBalance = db.runTransaction { transaction ->
-                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document("escrow_$proposalId")
+                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdemId)
                 if (transaction.get(idemRef).exists()) {
                     throw DuplicateTransactionException("Suggested post $proposalId already escrowed")
                 }
-                val userRef = db.collection(COLLECTION_USERS).document(resolvedId)
+                val userRef = db.collection(COLLECTION_USERS).document(effectiveUserId)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
                 val userSnap = transaction.get(userRef)
-                val currentBalance = userSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(resolvedId) ?: 1000L)
+                val currentBalance = userSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(effectiveUserId) ?: 1000L)
                 if (currentBalance < priceStars) {
                     throw InsufficientBalanceException("Недостаточно звёзд ($currentBalance < $priceStars)")
                 }
                 val updatedBalance = currentBalance - priceStars
-                transaction.update(userRef, mapOf("balance" to updatedBalance, "updated_at" to now))
+                if (userSnap.exists()) {
+                    transaction.update(userRef, mapOf("balance" to updatedBalance, "updated_at" to now))
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveUserId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = updatedBalance.coerceIn(0L, 1000L),
+                        role = "user",
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(userRef, fallbackUser.toFirestoreMap())
+                }
                 transaction.set(
                     ledgerRef,
                     KuoteXLedgerTxDoc(
                         txId = txId,
-                        idempotencyKey = "escrow_$proposalId",
+                        idempotencyKey = safeIdemId,
                         type = LedgerTransactionType.DIRECT_MESSAGE_STAR.value,
-                        fromUserId = resolvedId,
+                        fromUserId = effectiveUserId,
                         toUserId = "escrow_channel_$channelId",
                         amount = priceStars,
                         status = LedgerTransactionStatus.PENDING.value,
                         metadata = mapOf("channel_id" to channelId, "proposal_id" to proposalId),
                         createdAt = now
-                    )
+                    ).toFirestoreMap()
                 )
-                val authUid = currentAuthUid() ?: resolvedId
-                transaction.set(idemRef, mapOf("tx_id" to txId, "user_id" to authUid, "created_at" to now))
+                transaction.set(idemRef, mapOf("tx_id" to txId, "user_id" to effectiveUserId, "created_at" to now))
                 updatedBalance
             }.await()
 
-            saveCachedBalance(resolvedId, newBalance)
+            saveCachedBalance(effectiveUserId, newBalance)
             _currentUserState.update { curr ->
                 curr?.copy(balance = newBalance, updatedAt = now)
-                    ?: KuoteXUserDoc(userId = resolvedId, username = "user", displayName = "User", balance = newBalance)
+                    ?: KuoteXUserDoc(userId = effectiveUserId, username = "user", displayName = "User", balance = newBalance)
             }
-            com.example.ui.rating.UserRatingManager.recordMarketOrPaidAction(resolvedId, priceStars.toInt())
+            com.example.ui.rating.UserRatingManager.recordMarketOrPaidAction(effectiveUserId, priceStars.toInt())
             Result.success(newBalance)
         } catch (e: CancellationException) {
             throw e
@@ -1688,39 +1830,44 @@ Result.failure(PaymentOutcomeUnknown(providerTxId, "Не удалось связ
         val now = System.currentTimeMillis()
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val authUid = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val targetOwner = if (resolvedOwner == "me") authUid else resolvedOwner
+            val safeIdemId = sanitizeFirestoreId("payout_$proposalId", "payout")
             val updatedBal = db.runTransaction { transaction ->
-                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document("payout_$proposalId")
+                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdemId)
                 if (transaction.get(idemRef).exists()) {
                     throw DuplicateTransactionException("Already paid out")
                 }
-                val ownerRef = db.collection(COLLECTION_USERS).document(resolvedOwner)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
-                val snap = transaction.get(ownerRef)
-                val currentBalance = snap.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(resolvedOwner) ?: 1000L)
+                val isOwnAccount = targetOwner == authUid
+                val ownerRef = if (isOwnAccount) db.collection(COLLECTION_USERS).document(authUid) else null
+                val snap = ownerRef?.let { transaction.get(it) }
+                val currentBalance = snap?.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(targetOwner) ?: 1000L)
                 val nextBal = currentBalance + ownerShare
-                transaction.update(ownerRef, mapOf("balance" to nextBal, "updated_at" to now))
+                if (ownerRef != null && snap != null && snap.exists()) {
+                    transaction.update(ownerRef, mapOf("balance" to nextBal, "updated_at" to now))
+                }
                 transaction.set(
                     ledgerRef,
                     KuoteXLedgerTxDoc(
                         txId = txId,
-                        idempotencyKey = "payout_$proposalId",
+                        idempotencyKey = safeIdemId,
                         type = LedgerTransactionType.DIRECT_MESSAGE_STAR.value,
-                        fromUserId = "escrow_channel_$channelId",
-                        toUserId = resolvedOwner,
+                        fromUserId = authUid,
+                        toUserId = targetOwner,
                         amount = ownerShare,
                         status = LedgerTransactionStatus.COMMITTED.value,
                         metadata = mapOf("channel_id" to channelId, "proposal_id" to proposalId),
                         createdAt = now
-                    )
+                    ).toFirestoreMap()
                 )
-                val authUid = currentAuthUid() ?: resolvedOwner
                 transaction.set(idemRef, mapOf("tx_id" to txId, "user_id" to authUid, "created_at" to now))
                 nextBal
             }.await()
 
-            if (_currentUserState.value?.userId == resolvedOwner) {
-                saveCachedBalance(resolvedOwner, updatedBal)
+            if (_currentUserState.value?.userId == targetOwner) {
+                saveCachedBalance(targetOwner, updatedBal)
                 _currentUserState.update { it?.copy(balance = updatedBal, updatedAt = now) }
             }
             Result.success(ownerShare)
@@ -1754,39 +1901,44 @@ Result.failure(PaymentOutcomeUnknown(providerTxId, "Не удалось связ
         val now = System.currentTimeMillis()
         try {
             val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
-            if (currentAuthUid().isNullOrBlank()) throw IllegalStateException("User not signed in")
+            val authUid = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val targetSub = if (resolvedSub == "me") authUid else resolvedSub
+            val safeIdemId = sanitizeFirestoreId("refund_$proposalId", "refund")
             val newBalance = db.runTransaction { transaction ->
-                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document("refund_$proposalId")
+                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdemId)
                 if (transaction.get(idemRef).exists()) {
                     throw DuplicateTransactionException("Already refunded")
                 }
-                val userRef = db.collection(COLLECTION_USERS).document(resolvedSub)
                 val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
-                val snap = transaction.get(userRef)
-                val cur = snap.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(resolvedSub) ?: 1000L)
+                val isOwnAccount = targetSub == authUid
+                val userRef = if (isOwnAccount) db.collection(COLLECTION_USERS).document(authUid) else null
+                val snap = userRef?.let { transaction.get(it) }
+                val cur = snap?.getLong("balance") ?: (_currentUserState.value?.balance ?: readCachedBalance(targetSub) ?: 1000L)
                 val nextBal = cur + priceStars
-                transaction.update(userRef, mapOf("balance" to nextBal, "updated_at" to now))
+                if (userRef != null && snap != null && snap.exists()) {
+                    transaction.update(userRef, mapOf("balance" to nextBal, "updated_at" to now))
+                }
                 transaction.set(
                     ledgerRef,
                     KuoteXLedgerTxDoc(
                         txId = txId,
-                        idempotencyKey = "refund_$proposalId",
+                        idempotencyKey = safeIdemId,
                         type = LedgerTransactionType.DIRECT_MESSAGE_STAR.value,
-                        fromUserId = "escrow_channel_$channelId",
-                        toUserId = resolvedSub,
+                        fromUserId = authUid,
+                        toUserId = targetSub,
                         amount = priceStars,
                         status = LedgerTransactionStatus.COMMITTED.value,
                         metadata = mapOf("channel_id" to channelId, "proposal_id" to proposalId, "refund" to true),
                         createdAt = now
-                    )
+                    ).toFirestoreMap()
                 )
-                val authUid = currentAuthUid() ?: resolvedSub
                 transaction.set(idemRef, mapOf("tx_id" to txId, "user_id" to authUid, "created_at" to now))
                 nextBal
             }.await()
 
-            if (_currentUserState.value?.userId == resolvedSub) {
-                saveCachedBalance(resolvedSub, newBalance)
+            if (_currentUserState.value?.userId == targetSub) {
+                saveCachedBalance(targetSub, newBalance)
                 _currentUserState.update { it?.copy(balance = newBalance, updatedAt = now) }
             }
             Result.success(newBalance)

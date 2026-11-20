@@ -576,6 +576,34 @@ test("Gifts catalog: create, supply decrement by 1, price lock, and list denial"
     })
   );
 
+  // Mirrors KuoteXCatalogGiftDoc.toFirestoreMap() for unlimited & empty-lottie gifts
+  await assertSucceeds(
+    aliceDb.collection("gifts_catalog").doc("gift_teddy_bear_007").set({
+      title: "Плюшевый Мишка",
+      price: 25,
+      total_supply: -1,
+      available_supply: -1,
+      is_exclusive: false,
+      lottie_asset_url: "",
+      backdrop_color_hex: "#261E14",
+      emoji_icon: "🧸",
+      max_upgrade_level: 4,
+      created_at: Date.now() - 5000,
+    })
+  );
+
+  // Reject leaked @DocumentId getter key (catalog_gift_id)
+  await assertFails(
+    aliceDb.collection("gifts_catalog").doc("gift_bad").set({
+      catalog_gift_id: "gift_bad",
+      title: "Bad Gift",
+      price: 50,
+      total_supply: -1,
+      available_supply: -1,
+      created_at: Date.now() - 5000,
+    })
+  );
+
   // Valid atomic supply decrement by exactly 1
   await assertSucceeds(giftRef.update({ available_supply: 781 }));
 
@@ -689,7 +717,8 @@ test("Ledger transactions, Idempotency keys & Poll votes: immutability, ownershi
     })
   );
 
-  // 2. Idempotency key create, owner read, immutability & list denial
+  // 2. Idempotency key pre-create get, create, owner read, cross-user denial, immutability & list denial
+  await assertSucceeds(aliceDb.collection("idempotency_keys").doc("idem_1").get());
   await assertSucceeds(
     aliceDb.collection("idempotency_keys").doc("idem_1").set({
       tx_id: "tx_1",
@@ -702,8 +731,9 @@ test("Ledger transactions, Idempotency keys & Poll votes: immutability, ownershi
   await assertFails(aliceDb.collection("idempotency_keys").get());
   await assertFails(aliceDb.collection("idempotency_keys").doc("idem_1").delete());
 
-  // 3. Poll vote deterministic doc ID (${poll_id}_${user_id}) & single-vote immutability
+  // 3. Poll vote pre-create get, deterministic doc ID (${poll_id}_${user_id}) & single-vote immutability
   const voteId = `poll_99_${ALICE_UID}`;
+  await assertSucceeds(aliceDb.collection("poll_votes").doc(voteId).get());
   await assertSucceeds(
     aliceDb.collection("poll_votes").doc(voteId).set({
       poll_id: "poll_99",
@@ -713,6 +743,8 @@ test("Ledger transactions, Idempotency keys & Poll votes: immutability, ownershi
       timestamp: Date.now() - 1000,
     })
   );
+  await assertFails(bobDb.collection("poll_votes").doc(voteId).get());
+  await assertFails(bobDb.collection("poll_votes").get());
   // Non-deterministic vote ID rejected
   await assertFails(
     aliceDb.collection("poll_votes").doc("arbitrary_id").set({
@@ -729,3 +761,125 @@ test("Ledger transactions, Idempotency keys & Poll votes: immutability, ownershi
   );
   await assertFails(aliceDb.collection("poll_votes").doc(voteId).delete());
 });
+
+test("Atomic gift purchase transaction parity: self-gift and cross-user gift succeed without cross-user /users writes", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const now = Date.now() - 1000;
+
+  // Seed Alice profile and limited gift catalog item
+  await assertSucceeds(aliceDb.collection("users").doc(ALICE_UID).set(validUserPayload()));
+  await assertSucceeds(
+    aliceDb.collection("gifts_catalog").doc("gift_cyber_dragon_001").set({
+      title: "Cyber Dragon 2026",
+      price: 250,
+      total_supply: 1000,
+      available_supply: 782,
+      is_exclusive: true,
+      lottie_asset_url: "cyber_dragon.json",
+      backdrop_color_hex: "#1E1B4B",
+      emoji_icon: "🐉",
+      max_upgrade_level: 5,
+      created_at: now - 5000,
+    })
+  );
+
+  // Mirrors processGiftPurchaseAtomic pre-flight gets before writes
+  await assertSucceeds(aliceDb.collection("idempotency_keys").doc("buy_self_1").get());
+  await assertSucceeds(aliceDb.collection("users").doc(ALICE_UID).get());
+  await assertSucceeds(aliceDb.collection("gifts_catalog").doc("gift_cyber_dragon_001").get());
+
+  // 1. Self-gift batch (updates Alice's balance + pinned_gifts_count, decrements catalog supply, writes gift/ledger/idempotency)
+  const selfBatch = aliceDb.batch();
+  selfBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    balance: 750,
+    pinned_gifts_count: 1,
+    updated_at: now,
+  });
+  selfBatch.update(aliceDb.collection("gifts_catalog").doc("gift_cyber_dragon_001"), {
+    available_supply: 781,
+  });
+  selfBatch.set(aliceDb.collection("user_gifts").doc("ug_b8fb78b8f0e244a6"), {
+    catalog_gift_id: "gift_cyber_dragon_001",
+    sender_id: ALICE_UID,
+    receiver_id: ALICE_UID,
+    is_pinned_to_header: true,
+    pin_order_index: 0,
+    upgrade_level: 1,
+    transferable: false,
+    message: "For myself",
+    is_anonymous: false,
+    acquired_at: now,
+    cached_title: "Cyber Dragon 2026",
+    cached_emoji: "🐉",
+    cached_color_hex: "#1E1B4B",
+  });
+  selfBatch.set(aliceDb.collection("ledger_transactions").doc("tx_self_1"), {
+    idempotency_key: "buy_self_1",
+    type: "GIFT_PURCHASE",
+    from_user_id: ALICE_UID,
+    to_user_id: ALICE_UID,
+    amount: 250,
+    fee: 0,
+    status: "COMMITTED",
+    metadata: {
+      catalog_gift_id: "gift_cyber_dragon_001",
+      user_gift_id: "ug_b8fb78b8f0e244a6",
+      is_pinned: true,
+    },
+    created_at: now,
+  });
+  selfBatch.set(aliceDb.collection("idempotency_keys").doc("buy_self_1"), {
+    tx_id: "tx_self_1",
+    user_id: ALICE_UID,
+    created_at: now,
+  });
+  await assertSucceeds(selfBatch.commit());
+
+  // 2. Cross-user gift batch (Alice -> Bob): updates ONLY Alice's /users doc, never touches Bob's /users doc
+  await assertSucceeds(aliceDb.collection("idempotency_keys").doc("buy_bob_1").get());
+  const bobBatch = aliceDb.batch();
+  bobBatch.update(aliceDb.collection("users").doc(ALICE_UID), {
+    balance: 500,
+    updated_at: now + 100,
+  });
+  bobBatch.update(aliceDb.collection("gifts_catalog").doc("gift_cyber_dragon_001"), {
+    available_supply: 780,
+  });
+  bobBatch.set(aliceDb.collection("user_gifts").doc("ug_c9fc89c9f1f355b7"), {
+    catalog_gift_id: "gift_cyber_dragon_001",
+    sender_id: ALICE_UID,
+    receiver_id: BOB_UID,
+    is_pinned_to_header: true,
+    pin_order_index: 0,
+    upgrade_level: 1,
+    transferable: false,
+    message: "Happy Gift!",
+    is_anonymous: false,
+    acquired_at: now + 100,
+    cached_title: "Cyber Dragon 2026",
+    cached_emoji: "🐉",
+    cached_color_hex: "#1E1B4B",
+  });
+  bobBatch.set(aliceDb.collection("ledger_transactions").doc("tx_bob_1"), {
+    idempotency_key: "buy_bob_1",
+    type: "GIFT_PURCHASE",
+    from_user_id: ALICE_UID,
+    to_user_id: BOB_UID,
+    amount: 250,
+    fee: 0,
+    status: "COMMITTED",
+    metadata: {
+      catalog_gift_id: "gift_cyber_dragon_001",
+      user_gift_id: "ug_c9fc89c9f1f355b7",
+      is_pinned: true,
+    },
+    created_at: now + 100,
+  });
+  bobBatch.set(aliceDb.collection("idempotency_keys").doc("buy_bob_1"), {
+    tx_id: "tx_bob_1",
+    user_id: ALICE_UID,
+    created_at: now + 100,
+  });
+  await assertSucceeds(bobBatch.commit());
+});
+

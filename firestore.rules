@@ -383,6 +383,7 @@ service cloud.firestore {
                      request.auth.uid in existing().participants;
 
       allow get: if isSignedIn() && isValidId(chatId) && (
+                   resource == null ||
                    (('participants' in existing()) && request.auth.uid in existing().participants) ||
                    (!('participants' in existing()) && existing().get('isChannel', false) == true)
                  );
@@ -612,11 +613,18 @@ service cloud.firestore {
 
     // 5. User Gifts (/user_gifts/{userGiftId})
     match /user_gifts/{userGiftId} {
-      allow get, list: if isSignedIn() && (
-                         existing().receiver_id == request.auth.uid ||
-                         existing().sender_id == request.auth.uid ||
-                         existing().is_pinned_to_header == true
-                       );
+      allow get: if isSignedIn() && isValidId(userGiftId) && (
+                     resource == null ||
+                     existing().receiver_id == request.auth.uid ||
+                     existing().sender_id == request.auth.uid ||
+                     existing().is_pinned_to_header == true
+                   );
+
+      allow list: if isSignedIn() && (
+                      existing().receiver_id == request.auth.uid ||
+                      existing().sender_id == request.auth.uid ||
+                      existing().is_pinned_to_header == true
+                    );
 
       allow create: if isSignedIn() &&
                        isValidId(userGiftId) &&
@@ -658,7 +666,7 @@ service cloud.firestore {
 
     // 7. Idempotency Keys (/idempotency_keys/{keyId})
     match /idempotency_keys/{keyId} {
-      allow get: if isSignedIn() && isValidId(keyId) && existing().user_id == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(keyId) && (resource == null || existing().user_id == request.auth.uid);
       allow list: if false;
 
       allow create: if isSignedIn() &&
@@ -671,7 +679,8 @@ service cloud.firestore {
 
     // 8. Poll Votes (/poll_votes/{voteId})
     match /poll_votes/{voteId} {
-      allow get, list: if isSignedIn() && existing().user_id == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(voteId) && (resource == null || existing().user_id == request.auth.uid);
+      allow list: if isSignedIn() && existing().user_id == request.auth.uid;
 
       allow create: if isSignedIn() &&
                        isValidId(voteId) &&

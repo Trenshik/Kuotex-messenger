@@ -2,6 +2,7 @@ package com.example.data.ecosystem
 
 import androidx.annotation.Keep
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.IgnoreExtraProperties
 import com.google.firebase.firestore.PropertyName
 
@@ -43,7 +44,6 @@ data class AllocatedBoost(
 @IgnoreExtraProperties
 data class KuoteXUserDoc(
     @DocumentId
-    @get:PropertyName("user_id") @set:PropertyName("user_id")
     var userId: String = "",
     var username: String = "",
     @get:PropertyName("display_name") @set:PropertyName("display_name")
@@ -65,16 +65,19 @@ data class KuoteXUserDoc(
     @get:PropertyName("updated_at") @set:PropertyName("updated_at")
     var updatedAt: Long = System.currentTimeMillis()
 ) {
+    @Exclude
     fun isVipActive(): Boolean {
         if (!vipStatus) return false
         if (vipExpiration == 0L) return true // Lifetime
         return System.currentTimeMillis() < vipExpiration
     }
 
+    @Exclude
     fun hasBoostPrivilege(): Boolean {
         return isVipActive() || role.equals("admin", ignoreCase = true) || role.equals("developer", ignoreCase = true)
     }
 
+    @get:Exclude
     val parsedRole: KuoteXUserRole get() = KuoteXUserRole.fromString(role)
 }
 
@@ -86,7 +89,6 @@ data class KuoteXUserDoc(
 @IgnoreExtraProperties
 data class KuoteXChannelDoc(
     @DocumentId
-    @get:PropertyName("channel_id") @set:PropertyName("channel_id")
     var channelId: String = "",
     var title: String = "",
     @get:PropertyName("current_votes") @set:PropertyName("current_votes")
@@ -114,7 +116,6 @@ data class KuoteXChannelDoc(
 @IgnoreExtraProperties
 data class KuoteXCatalogGiftDoc(
     @DocumentId
-    @get:PropertyName("catalog_gift_id") @set:PropertyName("catalog_gift_id")
     var catalogGiftId: String = "",
     var title: String = "",
     var price: Long = 100L,
@@ -144,7 +145,6 @@ data class KuoteXCatalogGiftDoc(
 @IgnoreExtraProperties
 data class KuoteXUserGiftDoc(
     @DocumentId
-    @get:PropertyName("user_gift_id") @set:PropertyName("user_gift_id")
     var userGiftId: String = "",
     @get:PropertyName("catalog_gift_id") @set:PropertyName("catalog_gift_id")
     var catalogGiftId: String = "",
@@ -209,7 +209,6 @@ enum class LedgerTransactionStatus(val value: String) {
 @IgnoreExtraProperties
 data class KuoteXLedgerTxDoc(
     @DocumentId
-    @get:PropertyName("tx_id") @set:PropertyName("tx_id")
     var txId: String = "",
     @get:PropertyName("idempotency_key") @set:PropertyName("idempotency_key")
     var idempotencyKey: String = "",
@@ -234,7 +233,6 @@ data class KuoteXLedgerTxDoc(
 @IgnoreExtraProperties
 data class KuoteXPollVoteDoc(
     @DocumentId
-    @get:PropertyName("vote_id") @set:PropertyName("vote_id")
     var voteId: String = "",
     @get:PropertyName("poll_id") @set:PropertyName("poll_id")
     var pollId: String = "",
@@ -245,6 +243,87 @@ data class KuoteXPollVoteDoc(
     @get:PropertyName("selected_option_ids") @set:PropertyName("selected_option_ids")
     var selectedOptionIds: List<Int> = emptyList(),
     var timestamp: Long = System.currentTimeMillis()
+)
+
+fun KuoteXUserDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "username" to username.trim().ifBlank { "user" }.take(64),
+    "display_name" to displayName.trim().ifBlank { "User" }.take(100),
+    "balance" to balance.coerceIn(0L, 100_000_000L),
+    "role" to (role.takeIf { it in setOf("user", "moderator", "admin", "developer") } ?: "user"),
+    "vip_status" to vipStatus,
+    "vip_expiration" to vipExpiration.coerceAtLeast(0L),
+    "available_boost_votes" to availableBoostVotes.coerceIn(0, 1000),
+    "allocated_boosts" to allocatedBoosts.take(50).map { boost ->
+        mapOf(
+            "channel_id" to boost.channelId,
+            "votes_count" to boost.votesCount,
+            "boosted_at" to boost.boostedAt
+        )
+    },
+    "pinned_gifts_count" to pinnedGiftsCount.coerceIn(0, 12),
+    "created_at" to createdAt.coerceAtLeast(1L),
+    "updated_at" to updatedAt.coerceAtLeast(1L)
+)
+
+fun KuoteXChannelDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "title" to title.trim().ifBlank { "Канал" }.take(200),
+    "current_votes" to currentVotes.coerceIn(0, 1_000_000),
+    "level" to level.coerceIn(0, 10),
+    "next_level_required_votes" to nextLevelRequiredVotes.coerceAtLeast(0),
+    "custom_color_unlocked" to customColorUnlocked,
+    "status_emoji_unlocked" to statusEmojiUnlocked,
+    "wallpaper_unlocked" to wallpaperUnlocked,
+    "stories_per_day_limit" to storiesPerDayLimit.coerceIn(0, 500),
+    "updated_at" to updatedAt.coerceAtLeast(1L)
+)
+
+fun KuoteXCatalogGiftDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "title" to title.trim().ifBlank { "Подарок" }.take(100),
+    "price" to price.coerceIn(1L, 10_000_000L),
+    "total_supply" to totalSupply.coerceAtLeast(-1L),
+    "available_supply" to availableSupply.coerceAtLeast(-1L),
+    "is_exclusive" to isExclusive,
+    "lottie_asset_url" to lottieAssetUrl.take(200),
+    "backdrop_color_hex" to backdropColorHex.take(32),
+    "emoji_icon" to emojiIcon.take(32),
+    "max_upgrade_level" to maxUpgradeLevel,
+    "created_at" to createdAt.coerceAtLeast(1L)
+)
+
+fun KuoteXUserGiftDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "catalog_gift_id" to catalogGiftId.take(128),
+    "sender_id" to senderId.take(128),
+    "receiver_id" to receiverId.take(128),
+    "is_pinned_to_header" to isPinnedToHeader,
+    "pin_order_index" to pinOrderIndex,
+    "upgrade_level" to upgradeLevel.coerceIn(1, 10),
+    "transferable" to transferable,
+    "message" to message.take(500),
+    "is_anonymous" to isAnonymous,
+    "acquired_at" to acquiredAt.coerceAtLeast(1L),
+    "cached_title" to cachedTitle.take(100),
+    "cached_emoji" to cachedEmoji.take(32),
+    "cached_color_hex" to cachedColorHex.take(32)
+)
+
+fun KuoteXLedgerTxDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "idempotency_key" to idempotencyKey.take(128),
+    "type" to type,
+    "from_user_id" to fromUserId.take(128),
+    "to_user_id" to toUserId.take(128),
+    "amount" to amount.coerceIn(0L, 100_000_000L),
+    "fee" to fee.coerceAtLeast(0L),
+    "status" to status,
+    "metadata" to metadata,
+    "created_at" to createdAt.coerceAtLeast(1L)
+)
+
+fun KuoteXPollVoteDoc.toFirestoreMap(): Map<String, Any> = mapOf(
+    "poll_id" to pollId.take(128),
+    "chat_id" to chatId.take(128),
+    "user_id" to userId.take(128),
+    "selected_option_ids" to selectedOptionIds.take(10),
+    "timestamp" to timestamp.coerceAtLeast(1L)
 )
 
 /**

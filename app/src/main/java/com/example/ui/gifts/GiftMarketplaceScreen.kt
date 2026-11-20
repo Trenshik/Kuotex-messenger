@@ -121,7 +121,11 @@ fun GiftMarketplaceScreen(
     val collectibleGifts by ecosystemManager.collectibleMarketplaceGifts.collectAsState()
     val currentUser by ecosystemManager.currentUserState.collectAsState()
     val activeAccount = com.example.ui.LocalActiveAccount.current
-    val resolvedActiveUserId = activeAccount?.id?.takeIf { it.isNotBlank() } ?: currentUser?.userId ?: "me"
+    val resolvedActiveUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        ?.takeIf { it.isNotBlank() }
+        ?: activeAccount?.id?.takeIf { it.isNotBlank() && it != "me" }
+        ?: currentUser?.userId?.takeIf { it.isNotBlank() && it != "me" }
+        ?: "me"
     val activeCurrency by ecosystemManager.selectedCurrency.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) } // 0: Все / Маркетплейс, 1: Обычные, 2: Коллекционные
@@ -381,7 +385,7 @@ fun GiftMarketplaceScreen(
                 selectedCatalogGiftForBuy = null
                 scope.launch {
                     val activeUser = resolvedActiveUserId
-                    val receiver = targetUserId ?: activeUser
+                    val receiver = targetUserId?.takeIf { it.isNotBlank() && it != "me" } ?: activeUser
                     val idempotencyKey = "buy_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(6)}"
                     val result = ecosystemManager.processGiftPurchaseAtomic(
                         senderUserId = activeUser,

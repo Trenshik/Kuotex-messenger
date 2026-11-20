@@ -1132,7 +1132,10 @@ fun ProfileScreen(
             onDismiss = { selectedGiftDetail = null },
             onUpgradeClick = { g ->
                 scope.launch {
-                    val activeUser = ecosystemManager.currentUserState.value?.userId ?: "me"
+                    val activeUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                        ?.takeIf { it.isNotBlank() }
+                        ?: ecosystemManager.currentUserState.value?.userId
+                        ?: "me"
                     ecosystemManager.upgradeUserGiftAtomic(activeUser, g.id)
                 }
             }
@@ -1146,7 +1149,10 @@ fun ProfileScreen(
             isOwner = true,
             isPinned = pinnedCollectible?.id == col.id,
             onPinToggle = { c ->
-                val activeUser = ecosystemManager.currentUserState.value?.userId ?: "me"
+                val activeUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+                    ?.takeIf { it.isNotBlank() }
+                    ?: ecosystemManager.currentUserState.value?.userId
+                    ?: "me"
                 val newCol = if (pinnedCollectible?.id == c.id) null else c
                 ecosystemManager.pinCollectibleToUsername(activeUser, newCol)
             },
