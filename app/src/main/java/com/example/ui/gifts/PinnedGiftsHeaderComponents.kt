@@ -69,11 +69,18 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.HorizontalDivider
+import com.example.ui.Chat
+import com.example.ui.UserAccount
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -407,23 +414,38 @@ fun PinnedGiftCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            accentGlow.copy(alpha = 0.25f),
-                            baseBackdrop,
-                            Color(0xFF0F172A)
-                        )
-                    )
-                )
-                .padding(8.dp)
         ) {
+            if (gift.isCollectible && gift.patternName.isNotBlank()) {
+                PatternedGiftBackdrop(
+                    backdropColor = baseBackdrop,
+                    accentColor = accentGlow,
+                    patternName = gift.patternName,
+                    modifier = Modifier.fillMaxSize(),
+                    patternAlpha = 0.22f
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    accentGlow.copy(alpha = 0.25f),
+                                    baseBackdrop,
+                                    Color(0xFF0F172A)
+                                )
+                            )
+                        )
+                )
+            }
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Rarity Pill
+                // Top Rarity Pill / Serial + Crown or Avatar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -435,7 +457,7 @@ fun PinnedGiftCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = gift.rarityTier.title,
+                            text = if (gift.isCollectible && gift.serialNumber > 0) gift.formattedSerial else gift.rarityTier.title,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -454,31 +476,22 @@ fun PinnedGiftCard(
                     }
                 }
 
-                // Center Icon with floating bounce animation
+                // Center Animated Lottie Gift Art
                 Box(
                     modifier = Modifier
-                        .size(62.dp)
+                        .size(66.dp)
                         .graphicsLayer {
                             scaleX = if (gift.upgradeLevel >= 4) bounceScale else 1f
                             scaleY = if (gift.upgradeLevel >= 4) bounceScale else 1f
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Soft glowing ambient circle behind emoji
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(accentGlow.copy(alpha = 0.5f), Color.Transparent)
-                                ),
-                                CircleShape
-                            )
-                    )
-                    Text(
-                        text = gift.emojiIcon,
-                        fontSize = 38.sp,
-                        textAlign = TextAlign.Center
+                    GiftLottieArt(
+                        lottieAssetName = gift.animationAssetUrl,
+                        fallbackEmoji = gift.emojiIcon,
+                        emojiSize = 36.sp,
+                        accentColor = accentGlow,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
 
@@ -613,8 +626,9 @@ fun AddPinnedGiftSlot(
 }
 
 /**
- * PinnedGiftDetailBottomSheet - Modal dialog displaying full gift details,
- * message, upgrade perks, and level up button.
+ * PinnedGiftDetailBottomSheet - Telegram-style "Подарок" modal dialog with Lottie animation,
+ * resolved sender avatar & nickname, quick "отправить подарок" pill, info table,
+ * pin/upgrade/exchange owner controls, and "OK" button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -623,199 +637,264 @@ fun PinnedGiftDetailBottomSheet(
     onDismiss: () -> Unit,
     onUpgradeClick: (PinnedGift) -> Unit,
     onUnpinClick: ((PinnedGift) -> Unit)? = null,
-    onExchangeForStarsClick: ((PinnedGift) -> Unit)? = null
+    onExchangeForStarsClick: ((PinnedGift) -> Unit)? = null,
+    onSendGiftBack: ((PinnedGift) -> Unit)? = null,
+    chats: List<Chat> = emptyList(),
+    activeAccount: UserAccount? = null
 ) {
     if (gift == null) return
 
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
     val formattedDate = remember(gift.acquiredAt) {
-        val sdf = SimpleDateFormat("dd MMMM yyyy, HH:mm", Locale("ru"))
+        val sdf = SimpleDateFormat("dd MMM yyyy 'в' HH:mm", Locale("ru"))
         sdf.format(Date(gift.acquiredAt))
+    }
+
+    val resolvedSenderName = remember(gift.senderId, gift.senderName, gift.isAnonymous, chats, activeAccount) {
+        SenderIdentityResolver.resolveSenderName(
+            rawSenderId = gift.senderId,
+            storedSenderName = gift.senderName,
+            isAnonymous = gift.isAnonymous,
+            chats = chats,
+            activeAccount = activeAccount
+        )
+    }
+    val resolvedSenderAvatar = remember(gift.senderId, gift.senderAvatarUrl, gift.isAnonymous, chats, activeAccount) {
+        SenderIdentityResolver.resolveSenderAvatar(
+            rawSenderId = gift.senderId,
+            storedAvatarUrl = gift.senderAvatarUrl,
+            isAnonymous = gift.isAnonymous,
+            context = context,
+            chats = chats,
+            activeAccount = activeAccount
+        )
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF131826),
+        containerColor = Color(0xFF1A1922),
         dragHandle = null
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Close Button Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                IconButton(onClick = {
-                    coroutineScope.launch {
-                        try {
-                            sheetState.hide()
-                        } catch (_: Exception) {}
-                        onDismiss()
-                    }
-                }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Закрыть", tint = Color.LightGray)
-                }
-            }
-
-            // Big Animated Gift Icon
+            // Big Animated Gift Visual (with Patterned Backdrop if collectible)
             Box(
                 modifier = Modifier
-                    .size(110.dp)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(
-                                gift.parsedAccentColor.copy(alpha = 0.45f),
-                                Color.Transparent
-                            )
-                        ),
-                        CircleShape
-                    ),
+                    .size(124.dp)
+                    .clip(if (gift.isCollectible) RoundedCornerShape(28.dp) else CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = gift.emojiIcon, fontSize = 68.sp)
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = gift.title,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Text(
-                    text = gift.upgradeStars,
-                    color = Color(0xFFFFD700),
-                    fontSize = 18.sp,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .background(gift.parsedAccentColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "Уровень ${gift.upgradeLevel} из ${gift.maxUpgradeLevel}",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                if (gift.isCollectible && gift.patternName.isNotBlank()) {
+                    PatternedGiftBackdrop(
+                        backdropColor = gift.parsedBackdropColor,
+                        accentColor = gift.parsedAccentColor,
+                        patternName = gift.patternName,
+                        modifier = Modifier.fillMaxSize(),
+                        patternAlpha = 0.24f
                     )
                 }
+                GiftLottieArt(
+                    lottieAssetName = gift.animationAssetUrl,
+                    fallbackEmoji = gift.emojiIcon,
+                    emojiSize = 72.sp,
+                    accentColor = gift.parsedAccentColor,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = if (gift.isCollectible) "${gift.title} ${gift.formattedSerial}".trim() else "Подарок",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            if (!gift.isCollectible && gift.title.isNotBlank()) {
+                Text(
+                    text = "${gift.title} • Ур. ${gift.upgradeLevel}/${gift.maxUpgradeLevel}",
+                    fontSize = 13.sp,
+                    color = Color(0xFF9CA3AF),
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Gift Details Card
-            Card(
+            // Telegram-style dark bordered Info Table
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2638)),
-                shape = RoundedCornerShape(16.dp)
+                color = Color(0xFF22202B),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    DetailRow(label = "Отправитель", value = gift.senderName)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DetailRow(label = "Дата получения", value = formattedDate)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DetailRow(label = "Редкость", value = gift.rarityTier.title)
-                    if (gift.message.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF263248), RoundedCornerShape(10.dp))
-                                .padding(12.dp)
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Row 1: "От" with Avatar + Nickname + "отправить подарок" pill
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "От",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(88.dp)
+                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column {
-                                Text(
-                                    text = "Сообщение к подарку:",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "«${gift.message}»",
-                                    fontSize = 13.sp,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Normal
-                                )
+                            SenderAvatarBadge(
+                                senderName = resolvedSenderName,
+                                avatarUrl = resolvedSenderAvatar,
+                                isAnonymous = gift.isAnonymous,
+                                size = 24.dp,
+                                borderColor = Color(0xFF22202B)
+                            )
+                            Text(
+                                text = resolvedSenderName,
+                                color = if (gift.isAnonymous) Color(0xFFCBD5E1) else Color(0xFFC084FC),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (!gift.isAnonymous && onSendGiftBack != null && gift.senderId.isNotBlank() && gift.senderId != activeAccount?.id) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF8B5CF6).copy(alpha = 0.22f),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                try { sheetState.hide() } catch (_: Exception) {}
+                                                onDismiss()
+                                                onSendGiftBack(gift)
+                                            }
+                                        }
+                                ) {
+                                    Text(
+                                        text = "отправить подарок",
+                                        color = Color(0xFFD8B4FE),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
                         }
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+
+                    // Row 2: "Дата"
+                    TelegramTableRow(label = "Дата", value = formattedDate)
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+
+                    // Row 3: "Стоимость" with Golden Star
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Стоимость",
+                            color = Color(0xFF9CA3AF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.width(88.dp)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(text = "★", fontSize = 15.sp, color = Color(0xFFFFB703))
+                            Text(
+                                text = "%,d".format(gift.costStars),
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    if (gift.isCollectible && gift.modelName.isNotBlank()) {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+                        TelegramTableRow(label = "Модель", value = gift.modelName)
+                    }
+                    if (gift.isCollectible && gift.patternName.isNotBlank()) {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+                        TelegramTableRow(label = "Узор", value = gift.patternName)
+                    }
+
+                    if (gift.message.isNotBlank()) {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+                        Text(
+                            text = gift.message,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Upgrade Button
-            if (gift.upgradeLevel < gift.maxUpgradeLevel) {
-                Button(
+            // Keep Upgrade, Pin/Unpin, and Exchange for Stars buttons below info table (confirmed behavior)
+            if (gift.upgradeLevel < gift.maxUpgradeLevel && !gift.isCollectible) {
+                OutlinedButton(
                     onClick = {
                         coroutineScope.launch {
-                            try {
-                                sheetState.hide()
-                            } catch (_: Exception) {}
+                            try { sheetState.hide() } catch (_: Exception) {}
                             onUpgradeClick(gift)
                             onDismiss()
                         }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+                        .height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.6f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD8B4FE))
                 ) {
-                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = Color.White)
+                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Повысить уровень подарка (LVL ${gift.upgradeLevel + 1})",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 14.sp
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
                     )
                 }
-            } else {
-                Surface(
-                    color = Color(0xFF10B981).copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "👑 Максимальный уровень подарка достигнут!",
-                            color = Color(0xFF34D399),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (onUnpinClick != null) {
-                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = {
                         coroutineScope.launch {
-                            try {
-                                sheetState.hide()
-                            } catch (_: Exception) {}
+                            try { sheetState.hide() } catch (_: Exception) {}
                             onUnpinClick(gift)
                             onDismiss()
                         }
@@ -840,16 +919,14 @@ fun PinnedGiftDetailBottomSheet(
                         fontSize = 13.sp
                     )
                 }
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             if (onExchangeForStarsClick != null) {
-                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedButton(
                     onClick = {
                         coroutineScope.launch {
-                            try {
-                                sheetState.hide()
-                            } catch (_: Exception) {}
+                            try { sheetState.hide() } catch (_: Exception) {}
                             onExchangeForStarsClick(gift)
                             onDismiss()
                         }
@@ -874,10 +951,60 @@ fun PinnedGiftDetailBottomSheet(
                         fontSize = 13.sp
                     )
                 }
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Primary Telegram "OK" button
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        try { sheetState.hide() } catch (_: Exception) {}
+                        onDismiss()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(25.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+            ) {
+                Text(
+                    text = "OK",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 16.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
+    }
+}
+
+@Composable
+private fun TelegramTableRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF9CA3AF),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(88.dp)
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -955,13 +1082,25 @@ fun CollectibleGiftDetailBottomSheet(
         ) {
             Box(
                 modifier = Modifier
-                    .size(110.dp)
+                    .size(118.dp)
                     .clip(RoundedCornerShape(26.dp))
-                    .background(gift.parsedBackdropColor)
                     .border(2.dp, gift.parsedAccentColor, RoundedCornerShape(26.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = gift.emojiIcon, fontSize = 54.sp)
+                PatternedGiftBackdrop(
+                    backdropColor = gift.parsedBackdropColor,
+                    accentColor = gift.parsedAccentColor,
+                    patternName = gift.patternName,
+                    modifier = Modifier.fillMaxSize(),
+                    patternAlpha = 0.24f
+                )
+                GiftLottieArt(
+                    lottieAssetName = gift.effectiveLottieAsset,
+                    fallbackEmoji = gift.emojiIcon,
+                    emojiSize = 54.sp,
+                    accentColor = gift.parsedAccentColor,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))

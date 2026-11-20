@@ -6,8 +6,10 @@ import android.util.Log
 import com.example.data.FirestoreClientProvider
 import com.example.data.OperationType
 import com.example.data.handleFirestoreError
+import com.example.ui.gifts.CollectibleCollectionSummary
 import com.example.ui.gifts.CollectibleGift
 import com.example.ui.gifts.CurrencyType
+import com.example.ui.gifts.resolveGiftLottieAsset
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -130,6 +132,10 @@ object KuoteXEcosystemFirestoreManager {
     private val _collectibleMarketplaceGifts = MutableStateFlow<List<CollectibleGift>>(emptyList())
     val collectibleMarketplaceGifts: StateFlow<List<CollectibleGift>> = _collectibleMarketplaceGifts.asStateFlow()
 
+    // Grouped Collectible Collections shown with green "маркет" badge in Marketplace
+    private val _collectibleCollections = MutableStateFlow<List<CollectibleCollectionSummary>>(emptyList())
+    val collectibleCollections: StateFlow<List<CollectibleCollectionSummary>> = _collectibleCollections.asStateFlow()
+
     // User's pinned collectible gift next to nickname
     private val _userPinnedCollectible = MutableStateFlow<Map<String, CollectibleGift?>>(emptyMap())
     val userPinnedCollectible: StateFlow<Map<String, CollectibleGift?>> = _userPinnedCollectible.asStateFlow()
@@ -251,27 +257,123 @@ object KuoteXEcosystemFirestoreManager {
     private fun initDefaultCatalog() {
         val defaultCatalog = listOf(
             KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_cyber_dragon_001",
-                title = "Cyber Dragon 2026",
-                price = 250L,
-                totalSupply = 1000L,
-                availableSupply = 782L,
-                isExclusive = true,
-                lottieAssetUrl = "cyber_dragon.json",
-                backdropColorHex = "#1E1B4B",
-                emojiIcon = "🐉",
-                maxUpgradeLevel = 5
+                catalogGiftId = "gift_heart_box_008",
+                title = "Сердце с бантом",
+                price = 15L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_heart_lottie.json",
+                backdropColorHex = "#2E081E",
+                emojiIcon = "💝",
+                maxUpgradeLevel = 4
             ),
             KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_golden_crown_002",
-                title = "Золотая Корона VIP",
-                price = 150L,
-                totalSupply = 5000L,
-                availableSupply = 4120L,
-                isExclusive = true,
-                lottieAssetUrl = "golden_crown.json",
-                backdropColorHex = "#281904",
-                emojiIcon = "👑",
+                catalogGiftId = "gift_teddy_bear_007",
+                title = "Плюшевый Мишка",
+                price = 15L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_box_lottie.json",
+                backdropColorHex = "#261E14",
+                emojiIcon = "🧸",
+                maxUpgradeLevel = 4
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_golden_present_009",
+                title = "Золотой Подарок",
+                price = 25L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_box_lottie.json",
+                backdropColorHex = "#2D2206",
+                emojiIcon = "🎁",
+                maxUpgradeLevel = 4
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_sakura_flower_006",
+                title = "Красная Роза",
+                price = 25L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_heart_lottie.json",
+                backdropColorHex = "#290D16",
+                emojiIcon = "🌹",
+                maxUpgradeLevel = 3
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_cake_015",
+                title = "Праздничный Торт",
+                price = 50L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_sparkle_aura.json",
+                backdropColorHex = "#2C1810",
+                emojiIcon = "🎂",
+                maxUpgradeLevel = 4
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_bouquet_016",
+                title = "Букет Цветов",
+                price = 50L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_heart_lottie.json",
+                backdropColorHex = "#2A1224",
+                emojiIcon = "💐",
+                maxUpgradeLevel = 4
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_cosmic_rocket_004",
+                title = "Космическая Ракета",
+                price = 50L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_rocket_lottie.json",
+                backdropColorHex = "#1E1035",
+                emojiIcon = "🚀",
+                maxUpgradeLevel = 3
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_champagne_017",
+                title = "Шампанское",
+                price = 50L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_trophy_lottie.json",
+                backdropColorHex = "#12261E",
+                emojiIcon = "🍾",
+                maxUpgradeLevel = 4
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_magic_crystal_005",
+                title = "Магический Кристалл",
+                price = 50L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_sparkle_aura.json",
+                backdropColorHex = "#280B1E",
+                emojiIcon = "🔮",
+                maxUpgradeLevel = 3
+            ),
+            KuoteXCatalogGiftDoc(
+                catalogGiftId = "gift_trophy_018",
+                title = "Золотой Кубок",
+                price = 100L,
+                totalSupply = -1L,
+                availableSupply = -1L,
+                isExclusive = false,
+                lottieAssetUrl = "gift_trophy_lottie.json",
+                backdropColorHex = "#2A1D06",
+                emojiIcon = "🏆",
                 maxUpgradeLevel = 5
             ),
             KuoteXCatalogGiftDoc(
@@ -281,139 +383,39 @@ object KuoteXEcosystemFirestoreManager {
                 totalSupply = -1L,
                 availableSupply = -1L,
                 isExclusive = false,
-                lottieAssetUrl = "neon_diamond.json",
+                lottieAssetUrl = "gift_diamond_lottie.json",
                 backdropColorHex = "#062826",
                 emojiIcon = "💎",
                 maxUpgradeLevel = 3
             ),
             KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_cosmic_rocket_004",
-                title = "Космическая Ракета",
-                price = 75L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                lottieAssetUrl = "cosmic_rocket.json",
-                backdropColorHex = "#1E1035",
-                emojiIcon = "🚀",
-                maxUpgradeLevel = 3
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_magic_crystal_005",
-                title = "Магический Кристалл",
-                price = 50L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                lottieAssetUrl = "magic_crystal.json",
-                backdropColorHex = "#280B1E",
-                emojiIcon = "🔮",
-                maxUpgradeLevel = 3
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_sakura_flower_006",
-                title = "Цветущая Сакура",
-                price = 30L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                lottieAssetUrl = "sakura.json",
-                backdropColorHex = "#1C0D17",
-                emojiIcon = "🌸",
-                maxUpgradeLevel = 3
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_teddy_bear_007",
-                title = "Плюшевый Мишка",
-                price = 25L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                backdropColorHex = "#261E14",
-                emojiIcon = "🧸",
-                maxUpgradeLevel = 4
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_heart_box_008",
-                title = "Сердце с бантом",
-                price = 50L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                backdropColorHex = "#2E081E",
-                emojiIcon = "💝",
-                maxUpgradeLevel = 4
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_golden_present_009",
-                title = "Золотой Подарок",
-                price = 100L,
-                totalSupply = -1L,
-                availableSupply = -1L,
-                isExclusive = false,
-                backdropColorHex = "#2D2206",
-                emojiIcon = "🎁",
-                maxUpgradeLevel = 4
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_nail_bracelet_010",
-                title = "Nail Bracelet",
-                price = 11771L,
+                catalogGiftId = "gift_golden_crown_002",
+                title = "Золотая Корона VIP",
+                price = 150L,
                 totalSupply = 5000L,
-                availableSupply = 420L,
+                availableSupply = 4120L,
                 isExclusive = true,
-                backdropColorHex = "#162826",
-                emojiIcon = "💍",
+                lottieAssetUrl = "gift_trophy_lottie.json",
+                backdropColorHex = "#281904",
+                emojiIcon = "👑",
                 maxUpgradeLevel = 5
             ),
             KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_durov_glasses_011",
-                title = "Durov's Glasses",
-                price = 9775L,
-                totalSupply = 10000L,
-                availableSupply = 562L,
+                catalogGiftId = "gift_cyber_dragon_001",
+                title = "Cyber Dragon 2026",
+                price = 250L,
+                totalSupply = 1000L,
+                availableSupply = 782L,
                 isExclusive = true,
-                backdropColorHex = "#0C1F2D",
-                emojiIcon = "🕶️",
-                maxUpgradeLevel = 5
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_perfume_bottle_012",
-                title = "Perfume Bottle",
-                price = 7115L,
-                totalSupply = 8000L,
-                availableSupply = 423L,
-                isExclusive = true,
-                backdropColorHex = "#27122B",
-                emojiIcon = "🧴",
-                maxUpgradeLevel = 5
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_spartan_helmet_013",
-                title = "Spartan Helmet",
-                price = 18790L,
-                totalSupply = 3000L,
-                availableSupply = 180L,
-                isExclusive = true,
-                backdropColorHex = "#2B160C",
-                emojiIcon = "⛑️",
-                maxUpgradeLevel = 5
-            ),
-            KuoteXCatalogGiftDoc(
-                catalogGiftId = "gift_champions_cup_014",
-                title = "Кубок Чемпиона",
-                price = 398672L,
-                totalSupply = 50L,
-                availableSupply = 12L,
-                isExclusive = true,
-                backdropColorHex = "#0D253A",
-                emojiIcon = "🏆",
+                lottieAssetUrl = "gift_rocket_lottie.json",
+                backdropColorHex = "#1E1B4B",
+                emojiIcon = "🐉",
                 maxUpgradeLevel = 5
             )
         )
         _catalogGifts.value = defaultCatalog
 
-        // Initialize Collectible Gifts marketplace items
+        // Initialize Collectible Gifts marketplace items and collection summaries
         initDefaultCollectibles()
     }
 
@@ -440,212 +442,563 @@ object KuoteXEcosystemFirestoreManager {
     }
 
     /**
-     * Initializes default unique collectible marketplace gifts matching the Telegram references.
+     * Initializes rich collectible collections & unique skins matching Telegram Android Gifts Marketplace.
      */
     private fun initDefaultCollectibles() {
+        val now = System.currentTimeMillis()
         val collectibles = listOf(
+            // === Mirage Lamp Collection ===
+            CollectibleGift(
+                id = "col_mirage_22660",
+                serialNumber = 22660,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🪔",
+                modelName = "Moonlit Flower",
+                backdropName = "Seafoam",
+                patternName = "Cactus",
+                backdropColorHex = "#2E7370",
+                accentGlowHex = "#5EEAD4",
+                priceStars = 471L,
+                ownerName = "oasis_trader",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 2
+            ),
+            CollectibleGift(
+                id = "col_mirage_22770",
+                serialNumber = 22770,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🪔",
+                modelName = "Genie Lantern",
+                backdropName = "Electric Purple",
+                patternName = "Scarab",
+                backdropColorHex = "#6D46B8",
+                accentGlowHex = "#C084FC",
+                priceStars = 471L,
+                ownerName = "genie_vault",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 3
+            ),
+            CollectibleGift(
+                id = "col_mirage_23104",
+                serialNumber = 23104,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🏮",
+                modelName = "Crimson Sultan",
+                backdropName = "Seafoam",
+                patternName = "Wreath",
+                backdropColorHex = "#2C6B67",
+                accentGlowHex = "#F43F5E",
+                priceStars = 471L,
+                ownerName = "ruby_collector",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 4
+            ),
+            CollectibleGift(
+                id = "col_mirage_109383",
+                serialNumber = 109383,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🎈",
+                modelName = "Agrabah Hot Air",
+                backdropName = "Old Gold",
+                patternName = "Arabian Horse",
+                backdropColorHex = "#7A5D1D",
+                accentGlowHex = "#FACC15",
+                priceStars = 471L,
+                ownerName = "agrabah",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 5
+            ),
+            CollectibleGift(
+                id = "col_mirage_112461",
+                serialNumber = 112461,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🪔",
+                modelName = "Desert Jewel",
+                backdropName = "Emerald",
+                patternName = "Lightbulb",
+                backdropColorHex = "#277A57",
+                accentGlowHex = "#34D399",
+                priceStars = 471L,
+                ownerName = "desert_fox",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 6
+            ),
+            CollectibleGift(
+                id = "col_mirage_112696",
+                serialNumber = 112696,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🏮",
+                modelName = "Ice Crystal",
+                backdropName = "Moss Green",
+                patternName = "Star",
+                backdropColorHex = "#4B7B29",
+                accentGlowHex = "#A3E635",
+                priceStars = 471L,
+                ownerName = "frost_mint",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 7
+            ),
+            CollectibleGift(
+                id = "col_mirage_113190",
+                serialNumber = 113190,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🪔",
+                modelName = "Magma Heart",
+                backdropName = "English Violet",
+                patternName = "Crown",
+                backdropColorHex = "#9E3762",
+                accentGlowHex = "#FB7185",
+                priceStars = 495L,
+                ownerName = "rose_gold",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 8
+            ),
+            CollectibleGift(
+                id = "col_mirage_113378",
+                serialNumber = 113378,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "⚙️",
+                modelName = "Steampunk Brass",
+                backdropName = "Seafoam",
+                patternName = "Diamond",
+                backdropColorHex = "#1E787F",
+                accentGlowHex = "#FBBF24",
+                priceStars = 520L,
+                ownerName = "clockwork",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 9
+            ),
+            CollectibleGift(
+                id = "col_mirage_114052",
+                serialNumber = 114052,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🏮",
+                modelName = "Obsidian Amber",
+                backdropName = "Emerald",
+                patternName = "Shield",
+                backdropColorHex = "#1F6D5A",
+                accentGlowHex = "#4ADE80",
+                priceStars = 540L,
+                ownerName = "phantom_lux",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                createdAt = now - 86400000L * 10
+            ),
+            CollectibleGift(
+                id = "col_mirage_115843",
+                serialNumber = 115843,
+                baseTitle = "Mirage Lamp",
+                category = "Mirage Lamp",
+                collectionId = "mirage_lamp",
+                emojiIcon = "🕌",
+                modelName = "Oasis Dome",
+                backdropName = "Teal",
+                patternName = "Crown",
+                backdropColorHex = "#117B7C",
+                accentGlowHex = "#2DD4BF",
+                priceStars = 610L,
+                ownerName = "sultan",
+                lottieAssetUrl = "gift_lamp_lottie.json",
+                acceptsStarsOnly = false,
+                createdAt = now - 86400000L * 11
+            ),
+            // === Liberty Torch Collection ===
+            CollectibleGift(
+                id = "col_torch_4102",
+                serialNumber = 4102,
+                baseTitle = "Liberty Torch",
+                category = "Liberty Torch",
+                collectionId = "liberty_torch",
+                emojiIcon = "🔥",
+                modelName = "Bronze Flame",
+                backdropName = "Emerald",
+                patternName = "Star",
+                backdropColorHex = "#14532D",
+                accentGlowHex = "#FBBF24",
+                priceStars = 430L,
+                ownerName = "torch_bearer",
+                lottieAssetUrl = "gift_rocket_lottie.json"
+            ),
+            CollectibleGift(
+                id = "col_torch_8841",
+                serialNumber = 8841,
+                baseTitle = "Liberty Torch",
+                category = "Liberty Torch",
+                collectionId = "liberty_torch",
+                emojiIcon = "🔥",
+                modelName = "Neon Cyan",
+                backdropName = "Black",
+                patternName = "Sparkles",
+                backdropColorHex = "#1E293B",
+                accentGlowHex = "#38BDF8",
+                priceStars = 495L,
+                ownerName = "spark_ny",
+                lottieAssetUrl = "gift_rocket_lottie.json"
+            ),
+            CollectibleGift(
+                id = "col_torch_912",
+                serialNumber = 912,
+                baseTitle = "Liberty Torch",
+                category = "Liberty Torch",
+                collectionId = "liberty_torch",
+                emojiIcon = "🔥",
+                modelName = "Pure Gold",
+                backdropName = "Pure Gold",
+                patternName = "Crown",
+                backdropColorHex = "#6B4F10",
+                accentGlowHex = "#FDE047",
+                priceStars = 620L,
+                ownerName = "gold_mint",
+                lottieAssetUrl = "gift_rocket_lottie.json"
+            ),
+            // === Statue of Liberty Collection ===
+            CollectibleGift(
+                id = "col_statue_1205",
+                serialNumber = 1205,
+                baseTitle = "Statue of Liberty",
+                category = "Statue of Liberty",
+                collectionId = "statue_of_liberty",
+                emojiIcon = "🗽",
+                modelName = "Emerald Jade",
+                backdropName = "Seafoam",
+                patternName = "Star",
+                backdropColorHex = "#0F5E53",
+                accentGlowHex = "#34D399",
+                priceStars = 472L,
+                ownerName = "liberty_fan",
+                lottieAssetUrl = "gift_sparkle_aura.json"
+            ),
+            CollectibleGift(
+                id = "col_statue_4420",
+                serialNumber = 4420,
+                baseTitle = "Statue of Liberty",
+                category = "Statue of Liberty",
+                collectionId = "statue_of_liberty",
+                emojiIcon = "🗽",
+                modelName = "Violet Prism",
+                backdropName = "Electric Purple",
+                patternName = "Diamond",
+                backdropColorHex = "#4C1D95",
+                accentGlowHex = "#C084FC",
+                priceStars = 560L,
+                ownerName = "prism",
+                lottieAssetUrl = "gift_sparkle_aura.json"
+            ),
+            // === Jason Mask Collection ===
+            CollectibleGift(
+                id = "col_jason_1313",
+                serialNumber = 1313,
+                baseTitle = "Jason Mask",
+                category = "Jason Mask",
+                collectionId = "jason_mask",
+                emojiIcon = "🎭",
+                modelName = "Friday Bone",
+                backdropName = "Black",
+                patternName = "Shield",
+                backdropColorHex = "#27171B",
+                accentGlowHex = "#EF4444",
+                priceStars = 802L,
+                ownerName = "horror_vault",
+                lottieAssetUrl = "gift_sparkle_aura.json"
+            ),
+            CollectibleGift(
+                id = "col_jason_6660",
+                serialNumber = 6660,
+                baseTitle = "Jason Mask",
+                category = "Jason Mask",
+                collectionId = "jason_mask",
+                emojiIcon = "🎭",
+                modelName = "Chrome Blood",
+                backdropName = "Burgundy",
+                patternName = "Circuit",
+                backdropColorHex = "#4A101B",
+                accentGlowHex = "#FB7185",
+                priceStars = 940L,
+                ownerName = "midnight",
+                lottieAssetUrl = "gift_sparkle_aura.json"
+            ),
+            // === Ramen Bowl Collection ===
+            CollectibleGift(
+                id = "col_ramen_3310",
+                serialNumber = 3310,
+                baseTitle = "Ramen Bowl",
+                category = "Ramen Bowl",
+                collectionId = "ramen_bowl",
+                emojiIcon = "🍜",
+                modelName = "Tokyo Spicy",
+                backdropName = "Old Gold",
+                patternName = "Sakura Flower",
+                backdropColorHex = "#632A12",
+                accentGlowHex = "#F97316",
+                priceStars = 465L,
+                ownerName = "ichiraku",
+                lottieAssetUrl = "gift_box_lottie.json"
+            ),
+            CollectibleGift(
+                id = "col_ramen_7012",
+                serialNumber = 7012,
+                baseTitle = "Ramen Bowl",
+                category = "Ramen Bowl",
+                collectionId = "ramen_bowl",
+                emojiIcon = "🍜",
+                modelName = "Matcha Broth",
+                backdropName = "Moss Green",
+                patternName = "Wreath",
+                backdropColorHex = "#2B5B2E",
+                accentGlowHex = "#86EFAC",
+                priceStars = 515L,
+                ownerName = "kyoto",
+                lottieAssetUrl = "gift_box_lottie.json"
+            ),
+            // === Lollipop Collection ===
+            CollectibleGift(
+                id = "col_lollipop_1881",
+                serialNumber = 1881,
+                baseTitle = "Lollipop",
+                category = "Lollipop",
+                collectionId = "lollipop",
+                emojiIcon = "🍭",
+                modelName = "Rainbow Swirl",
+                backdropName = "English Violet",
+                patternName = "Sparkles",
+                backdropColorHex = "#5A246E",
+                accentGlowHex = "#F472B6",
+                priceStars = 472L,
+                ownerName = "candy_shop",
+                lottieAssetUrl = "gift_heart_lottie.json"
+            ),
+            CollectibleGift(
+                id = "col_lollipop_5012",
+                serialNumber = 5012,
+                baseTitle = "Lollipop",
+                category = "Lollipop",
+                collectionId = "lollipop",
+                emojiIcon = "🍭",
+                modelName = "Mint Berry",
+                backdropName = "Seafoam",
+                patternName = "Star",
+                backdropColorHex = "#1B6369",
+                accentGlowHex = "#5EEAD4",
+                priceStars = 499L,
+                ownerName = "sweet_mint",
+                lottieAssetUrl = "gift_heart_lottie.json"
+            ),
+            // === Ice Cream Cone Collection ===
+            CollectibleGift(
+                id = "col_icecream_2219",
+                serialNumber = 2219,
+                baseTitle = "Ice Cream Cone",
+                category = "Ice Cream Cone",
+                collectionId = "ice_cream",
+                emojiIcon = "🍦",
+                modelName = "Choco Glaze",
+                backdropName = "Old Gold",
+                patternName = "Star",
+                backdropColorHex = "#4B2E1E",
+                accentGlowHex = "#FBBF24",
+                priceStars = 472L,
+                ownerName = "gelato",
+                lottieAssetUrl = "gift_box_lottie.json"
+            ),
+            // === Flamingo Float Collection ===
+            CollectibleGift(
+                id = "col_flamingo_8901",
+                serialNumber = 8901,
+                baseTitle = "Flamingo Float",
+                category = "Flamingo Float",
+                collectionId = "flamingo_float",
+                emojiIcon = "🦩",
+                modelName = "Miami Pink",
+                backdropName = "Teal",
+                patternName = "Cactus",
+                backdropColorHex = "#175C72",
+                accentGlowHex = "#F472B6",
+                priceStars = 472L,
+                ownerName = "miami_pool",
+                lottieAssetUrl = "gift_heart_lottie.json"
+            ),
+            // === Nail Bracelet Collection ===
             CollectibleGift(
                 id = "col_nail_2095",
                 serialNumber = 2095,
                 baseTitle = "Nail Bracelet",
                 category = "Nail Bracelet",
+                collectionId = "nail_bracelet",
                 emojiIcon = "💍",
                 modelName = "Chrome Classic",
+                backdropName = "Black",
                 patternName = "Circuit",
                 backdropColorHex = "#1E293B",
                 accentGlowHex = "#94A3B8",
-                priceStars = 11771L,
+                priceStars = 680L,
                 ownerName = "durov",
-                isPinnedToUsername = true
+                isPinnedToUsername = true,
+                lottieAssetUrl = "gift_diamond_lottie.json"
             ),
             CollectibleGift(
                 id = "col_nail_1428",
                 serialNumber = 1428,
                 baseTitle = "Nail Bracelet",
                 category = "Nail Bracelet",
+                collectionId = "nail_bracelet",
                 emojiIcon = "💍",
                 modelName = "Neon Ruby",
-                patternName = "Dots Matrix",
-                backdropColorHex = "#3B1116",
+                backdropName = "Burgundy",
+                patternName = "Diamond",
+                backdropColorHex = "#5A1722",
                 accentGlowHex = "#EF4444",
-                priceStars = 12340L,
-                ownerName = "crypto_king"
+                priceStars = 740L,
+                ownerName = "crypto_king",
+                lottieAssetUrl = "gift_diamond_lottie.json"
             ),
             CollectibleGift(
                 id = "col_nail_3373",
                 serialNumber = 3373,
                 baseTitle = "Nail Bracelet",
                 category = "Nail Bracelet",
+                collectionId = "nail_bracelet",
                 emojiIcon = "💍",
                 modelName = "Mint Emerald",
-                patternName = "Constellations",
-                backdropColorHex = "#062E29",
+                backdropName = "Emerald",
+                patternName = "Wreath",
+                backdropColorHex = "#0B4D42",
                 accentGlowHex = "#10B981",
-                priceStars = 12340L,
-                ownerName = "alice_wonder"
+                priceStars = 790L,
+                ownerName = "alice_wonder",
+                lottieAssetUrl = "gift_diamond_lottie.json"
             ),
-            CollectibleGift(
-                id = "col_nail_2960",
-                serialNumber = 2960,
-                baseTitle = "Nail Bracelet",
-                category = "Nail Bracelet",
-                emojiIcon = "💍",
-                modelName = "Violet Glow",
-                patternName = "Starfield",
-                backdropColorHex = "#2E1065",
-                accentGlowHex = "#8B5CF6",
-                priceStars = 14239L,
-                ownerName = "saturn"
-            ),
-            CollectibleGift(
-                id = "col_nail_3974",
-                serialNumber = 3974,
-                baseTitle = "Nail Bracelet",
-                category = "Nail Bracelet",
-                emojiIcon = "💍",
-                modelName = "Cyber Gold",
-                patternName = "Paws",
-                backdropColorHex = "#271E06",
-                accentGlowHex = "#F59E0B",
-                priceStars = 14714L,
-                ownerName = "goldie"
-            ),
-            CollectibleGift(
-                id = "col_nail_2181",
-                serialNumber = 2181,
-                baseTitle = "Nail Bracelet",
-                category = "Nail Bracelet",
-                emojiIcon = "💍",
-                modelName = "Toxic Lime",
-                patternName = "Energy Waves",
-                backdropColorHex = "#1A2E05",
-                accentGlowHex = "#84CC16",
-                priceStars = 15179L,
-                ownerName = "alien"
-            ),
-            CollectibleGift(
-                id = "col_nail_322",
-                serialNumber = 322,
-                baseTitle = "Nail Bracelet",
-                category = "Nail Bracelet",
-                emojiIcon = "💍",
-                modelName = "Diamond Sparkle",
-                patternName = "Stars & Sparkles",
-                backdropColorHex = "#0E2A3A",
-                accentGlowHex = "#38BDF8",
-                priceStars = 15450L,
-                ownerName = "sparkler"
-            ),
-            // Durov's Glasses items
+            // === Durov's Glasses Collection ===
             CollectibleGift(
                 id = "col_glasses_3374",
                 serialNumber = 3374,
                 baseTitle = "Durov's Glasses",
                 category = "Durov's Glasses",
+                collectionId = "durovs_glasses",
                 emojiIcon = "🕶️",
                 modelName = "Matrix Vision",
-                patternName = "Digital Rain",
-                backdropColorHex = "#052E16",
+                backdropName = "Emerald",
+                patternName = "Circuit",
+                backdropColorHex = "#094225",
                 accentGlowHex = "#22C55E",
-                priceStars = 9776L,
-                ownerName = "neo"
+                priceStars = 590L,
+                ownerName = "neo",
+                lottieAssetUrl = "gift_diamond_lottie.json"
             ),
             CollectibleGift(
                 id = "col_glasses_2844",
                 serialNumber = 2844,
                 baseTitle = "Durov's Glasses",
                 category = "Durov's Glasses",
+                collectionId = "durovs_glasses",
                 emojiIcon = "🕶️",
                 modelName = "Aqua Star",
-                patternName = "Waveform",
-                backdropColorHex = "#0C2333",
+                backdropName = "Seafoam",
+                patternName = "Star",
+                backdropColorHex = "#0E4A5C",
                 accentGlowHex = "#06B6D4",
-                priceStars = 9778L,
-                ownerName = "round"
+                priceStars = 640L,
+                ownerName = "round",
+                lottieAssetUrl = "gift_diamond_lottie.json"
             ),
-            CollectibleGift(
-                id = "col_glasses_2751",
-                serialNumber = 2751,
-                baseTitle = "Durov's Glasses",
-                category = "Durov's Glasses",
-                emojiIcon = "🕶️",
-                modelName = "Cyber Purple",
-                patternName = "Hexagons",
-                backdropColorHex = "#2E0854",
-                accentGlowHex = "#C084FC",
-                priceStars = 10347L,
-                ownerName = "violetta"
-            ),
-            // Perfume Bottle items
+            // === Perfume Bottle Collection ===
             CollectibleGift(
                 id = "col_perfume_3107",
                 serialNumber = 3107,
                 baseTitle = "Perfume Bottle",
                 category = "Perfume Bottle",
+                collectionId = "perfume_bottle",
                 emojiIcon = "🧴",
                 modelName = "No. 5 Luxury",
-                patternName = "Floral Velvet",
-                backdropColorHex = "#350C2B",
+                backdropName = "English Violet",
+                patternName = "Sakura Flower",
+                backdropColorHex = "#4E143F",
                 accentGlowHex = "#F472B6",
-                priceStars = 7115L,
-                ownerName = "mademoiselle"
+                priceStars = 515L,
+                ownerName = "mademoiselle",
+                lottieAssetUrl = "gift_sparkle_aura.json"
             ),
-            CollectibleGift(
-                id = "col_perfume_3961",
-                serialNumber = 3961,
-                baseTitle = "Perfume Bottle",
-                category = "Perfume Bottle",
-                emojiIcon = "🧴",
-                modelName = "Golden Amber",
-                patternName = "Sunburst",
-                backdropColorHex = "#3A2906",
-                accentGlowHex = "#FBBF24",
-                priceStars = 7120L,
-                ownerName = "cleopatra"
-            ),
-            CollectibleGift(
-                id = "col_perfume_7585",
-                serialNumber = 7585,
-                baseTitle = "Perfume Bottle",
-                category = "Perfume Bottle",
-                emojiIcon = "🧴",
-                modelName = "Obsidian Noir",
-                patternName = "Night Silhouette",
-                backdropColorHex = "#18181B",
-                accentGlowHex = "#E4E4E7",
-                priceStars = 7585L,
-                ownerName = "phantom"
-            ),
-            // Spartan Helmet
+            // === Spartan Helmet & Champion's Cup ===
             CollectibleGift(
                 id = "col_spartan_187",
                 serialNumber = 187,
                 baseTitle = "Spartan Helmet",
                 category = "Spartan Helmet",
+                collectionId = "spartan_helmet",
                 emojiIcon = "⛑️",
                 modelName = "Leonidas Bronze",
-                patternName = "Battle Shields",
-                backdropColorHex = "#331205",
+                backdropName = "Old Gold",
+                patternName = "Shield",
+                backdropColorHex = "#5A240C",
                 accentGlowHex = "#EA580C",
-                priceStars = 18790L,
-                ownerName = "sparta300"
+                priceStars = 890L,
+                ownerName = "sparta300",
+                lottieAssetUrl = "gift_trophy_lottie.json"
             ),
-            // Champion's Cup
             CollectibleGift(
                 id = "col_cup_12",
                 serialNumber = 12,
                 baseTitle = "Кубок Чемпиона",
                 category = "Кубок Чемпиона",
+                collectionId = "champions_cup",
                 emojiIcon = "🏆",
                 modelName = "Grand Master",
-                patternName = "Golden Laurel",
-                backdropColorHex = "#172554",
+                backdropName = "Pure Gold",
+                patternName = "Crown",
+                backdropColorHex = "#1E3A8A",
                 accentGlowHex = "#FACC15",
-                priceStars = 398672L,
-                ownerName = "winner_2026"
+                priceStars = 1250L,
+                ownerName = "winner_2026",
+                lottieAssetUrl = "gift_trophy_lottie.json"
             )
         )
         _collectibleMarketplaceGifts.value = collectibles
+        rebuildCollectibleCollections(collectibles)
+    }
+
+    private fun rebuildCollectibleCollections(collectibles: List<CollectibleGift>) {
+        val grouped = collectibles
+            .groupBy { it.effectiveCollectionId }
+            .map { (colId, items) ->
+                val available = items.filter { it.isForSale }
+                val source = if (available.isNotEmpty()) available else items
+                val floorItem = source.minByOrNull { it.priceStars } ?: items.first()
+                CollectibleCollectionSummary(
+                    collectionId = colId,
+                    title = floorItem.baseTitle,
+                    emojiIcon = floorItem.emojiIcon,
+                    floorPriceStars = floorItem.priceStars,
+                    offersCount = available.size,
+                    backdropColorHex = floorItem.backdropColorHex,
+                    accentColorHex = floorItem.accentGlowHex,
+                    lottieAssetUrl = floorItem.effectiveLottieAsset
+                )
+            }
+        _collectibleCollections.value = grouped
+    }
+
+    fun getCollectibleCollectionSummary(collectionId: String): CollectibleCollectionSummary? {
+        return _collectibleCollections.value.find { it.collectionId == collectionId }
+    }
+
+    fun getCollectibleSkinsForCollection(collectionId: String): List<CollectibleGift> {
+        return _collectibleMarketplaceGifts.value.filter { it.effectiveCollectionId == collectionId }
     }
 
     /**
@@ -654,32 +1007,28 @@ object KuoteXEcosystemFirestoreManager {
     suspend fun purchaseCollectibleGift(
         userId: String,
         collectibleGiftId: String
-    ): Result<CollectibleGift> = withContext(Dispatchers.IO) {
-        val gift = _collectibleMarketplaceGifts.value.find { it.id == collectibleGiftId }
-            ?: return@withContext Result.failure(IllegalArgumentException("Collectible gift not found"))
-
-        val currentBalance = _currentUserState.value?.balance ?: 1000L
-        if (currentBalance < gift.priceStars) {
-            return@withContext Result.failure(InsufficientBalanceException("Недостаточно звёзд (${currentBalance} < ${gift.priceStars})"))
-        }
-
-        // Deduct stars & transfer ownership
-        _currentUserState.update { curr ->
-            curr?.copy(balance = curr.balance - gift.priceStars)
-        }
-
-        val updatedGift = gift.copy(ownerId = userId, ownerName = "me", isForSale = false)
-
-        _collectibleMarketplaceGifts.update { list ->
-            list.map { if (it.id == collectibleGiftId) updatedGift else it }
-        }
-
-        com.example.ui.rating.UserRatingManager.recordMarketOrPaidAction(
-            userId = userId,
-            starsSpent = gift.priceStars.toInt()
-        )
-
-        Result.success(updatedGift)
+    ): Result<CollectibleGift> = purchaseCollectibleSkinAtomic(
+        senderUserId = userId,
+        targetUserId = userId,
+        collectibleGiftId = collectibleGiftId,
+        idempotencyKey = "skin_${collectibleGiftId}_${System.currentTimeMillis()}"
+    ).map {
+        _collectibleMarketplaceGifts.value.find { g -> g.id == collectibleGiftId }
+            ?: CollectibleGift(
+                id = collectibleGiftId,
+                serialNumber = it.serialNumber,
+                baseTitle = it.cachedTitle,
+                category = it.cachedTitle,
+                emojiIcon = it.cachedEmoji,
+                modelName = it.modelName,
+                patternName = it.patternName,
+                backdropColorHex = it.cachedColorHex,
+                accentGlowHex = it.accentColorHex,
+                priceStars = it.giftCostStars,
+                ownerId = it.receiverId,
+                ownerName = "me",
+                isForSale = false
+            )
     }
 
     /**
@@ -762,11 +1111,15 @@ object KuoteXEcosystemFirestoreManager {
         idempotencyKey: String,
         message: String = "",
         pinToHeader: Boolean = true,
-        isAnonymous: Boolean = false
+        isAnonymous: Boolean = false,
+        senderName: String = "",
+        senderAvatarUrl: String = ""
     ): Result<KuoteXUserGiftDoc> = withContext(Dispatchers.IO) {
         val txId = "tx_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
         val userGiftId = "ug_${UUID.randomUUID().toString().replace("-", "").take(16)}"
         val now = System.currentTimeMillis()
+        val resolvedSenderDisplay = if (isAnonymous) "" else senderName.trim()
+        val resolvedSenderAvatar = if (isAnonymous) "" else senderAvatarUrl.trim()
 
         val safeTargetFallback = if (targetUserId.isBlank() || targetUserId == "me") {
             currentAuthUid()?.takeIf { it.isNotBlank() } ?: senderUserId.ifBlank { "me" }
@@ -816,7 +1169,6 @@ object KuoteXEcosystemFirestoreManager {
                     throw GiftSoldOutException("Gift is completely sold out")
                 }
 
-                // Determine pin count ignoring demo sample gifts and without cross-user /users/{targetId} reads/writes
                 val isSelfGift = effectiveTargetId == effectiveSenderId
                 val targetPinnedCount = if (isSelfGift) {
                     (senderSnap.getLong("pinned_gifts_count") ?: 0L).toInt()
@@ -852,7 +1204,7 @@ object KuoteXEcosystemFirestoreManager {
                     transaction.set(senderRef, fallbackUser.toFirestoreMap())
                 }
 
-                // 2. Decrement catalog supply if limited (create doc if catalog wasn't synced yet)
+                // 2. Decrement catalog supply if limited
                 if (availSupply > 0) {
                     if (catalogSnap.exists()) {
                         transaction.update(catalogRef, "available_supply", availSupply - 1)
@@ -864,6 +1216,13 @@ object KuoteXEcosystemFirestoreManager {
                     }
                 } else if (!catalogSnap.exists()) {
                     transaction.set(catalogRef, catalogData.toFirestoreMap())
+                }
+
+                val lottieFile = resolveGiftLottieAsset(catalogData.lottieAssetUrl, catalogData.emojiIcon, catalogData.title)
+                val senderFallbackName = resolvedSenderDisplay.ifBlank {
+                    senderSnap.getString("display_name")
+                        ?: _currentUserState.value?.displayName?.takeIf { it.isNotBlank() }
+                        ?: ""
                 }
 
                 // 3. Create User Gift Document
@@ -881,7 +1240,11 @@ object KuoteXEcosystemFirestoreManager {
                     acquiredAt = now,
                     cachedTitle = catalogData.title,
                     cachedEmoji = catalogData.emojiIcon,
-                    cachedColorHex = catalogData.backdropColorHex
+                    cachedColorHex = catalogData.backdropColorHex,
+                    senderName = if (isAnonymous) "" else senderFallbackName,
+                    senderAvatarUrl = resolvedSenderAvatar,
+                    giftCostStars = giftPrice,
+                    lottieAssetUrl = lottieFile
                 )
                 transaction.set(userGiftRef, userGiftDoc.toFirestoreMap())
 
@@ -914,8 +1277,8 @@ object KuoteXEcosystemFirestoreManager {
                 userGiftDoc
             }.await()
 
-            val purchasedPrice = _catalogGifts.value.find { g -> g.catalogGiftId == safeCatalogGiftId }?.price ?: 100L
-            // Update local state
+            val purchasedPrice = userGiftResult.giftCostStars.takeIf { it > 0L }
+                ?: (_catalogGifts.value.find { g -> g.catalogGiftId == safeCatalogGiftId }?.price ?: 100L)
             saveCachedBalance(effectiveSenderId, ((_currentUserState.value?.balance ?: 1000L) - purchasedPrice).coerceAtLeast(0L))
             _currentUserState.update { current ->
                 current?.let {
@@ -963,13 +1326,11 @@ object KuoteXEcosystemFirestoreManager {
                 return@withContext Result.failure(GiftSoldOutException("Gift is completely sold out"))
             }
 
-            // Deduct sender balance locally
             _currentUserState.update { curr ->
                 curr?.copy(balance = (curr.balance - giftPrice).coerceAtLeast(0L))
                     ?: KuoteXUserDoc(userId = senderUserId, username = "me", displayName = "Me", balance = (1000L - giftPrice).coerceAtLeast(0L))
             }
 
-            // Decrement catalog available supply
             if (availSupply > 0) {
                 _catalogGifts.update { list ->
                     list.map {
@@ -982,6 +1343,7 @@ object KuoteXEcosystemFirestoreManager {
                 ?: sampleUserGiftDocs(safeTargetFallback).toMutableList()
             val realPinnedCount = existing.count { it.isPinnedToHeader && !isSampleGiftId(it.userGiftId) }
             val shouldPin = pinToHeader && (realPinnedCount < 12)
+            val lottieFile = resolveGiftLottieAsset(catalogData.lottieAssetUrl, catalogData.emojiIcon, catalogData.title)
 
             val localUserGift = KuoteXUserGiftDoc(
                 userGiftId = userGiftId,
@@ -997,7 +1359,11 @@ object KuoteXEcosystemFirestoreManager {
                 acquiredAt = now,
                 cachedTitle = catalogData.title,
                 cachedEmoji = catalogData.emojiIcon,
-                cachedColorHex = catalogData.backdropColorHex
+                cachedColorHex = catalogData.backdropColorHex,
+                senderName = resolvedSenderDisplay,
+                senderAvatarUrl = resolvedSenderAvatar,
+                giftCostStars = giftPrice,
+                lottieAssetUrl = lottieFile
             )
 
             if (existing.none { it.userGiftId == localUserGift.userGiftId }) {
@@ -1014,6 +1380,477 @@ object KuoteXEcosystemFirestoreManager {
 
             Log.i(TAG, "Gift purchase completed locally: ${localUserGift.userGiftId} (${catalogData.title})")
             Result.success(localUserGift)
+        }
+    }
+
+    /**
+     * ATOMIC TRANSACTION: Purchase & Send a Collectible Skin (with unique model, backdrop, pattern & serial #)
+     */
+    suspend fun purchaseCollectibleSkinAtomic(
+        senderUserId: String,
+        targetUserId: String,
+        collectibleGiftId: String,
+        idempotencyKey: String,
+        message: String = "",
+        pinToHeader: Boolean = true,
+        isAnonymous: Boolean = false,
+        senderName: String = "",
+        senderAvatarUrl: String = ""
+    ): Result<KuoteXUserGiftDoc> = withContext(Dispatchers.IO) {
+        val skin = _collectibleMarketplaceGifts.value.find { it.id == collectibleGiftId }
+            ?: return@withContext Result.failure(IllegalArgumentException("Коллекционный скин не найден"))
+
+        val txId = "tx_skin_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+        val userGiftId = "ug_${UUID.randomUUID().toString().replace("-", "").take(16)}"
+        val now = System.currentTimeMillis()
+        val resolvedSenderDisplay = if (isAnonymous) "" else senderName.trim()
+        val resolvedSenderAvatar = if (isAnonymous) "" else senderAvatarUrl.trim()
+        val safeTargetFallback = if (targetUserId.isBlank() || targetUserId == "me") {
+            currentAuthUid()?.takeIf { it.isNotBlank() } ?: senderUserId.ifBlank { "me" }
+        } else {
+            targetUserId
+        }
+
+        try {
+            val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
+            val authUid = currentAuthUid()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("User not signed in")
+            val effectiveSenderId = authUid
+            val effectiveTargetId = if (targetUserId.isBlank() || targetUserId == "me") authUid else targetUserId.take(128)
+            val safeIdempotencyKey = sanitizeFirestoreId(idempotencyKey, "skin")
+
+            val userGiftResult = db.runTransaction { transaction ->
+                val idempotencyRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdempotencyKey)
+                if (transaction.get(idempotencyRef).exists()) {
+                    throw DuplicateTransactionException("Idempotency key already processed: $safeIdempotencyKey")
+                }
+
+                val senderRef = db.collection(COLLECTION_USERS).document(effectiveSenderId)
+                val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
+                val userGiftRef = db.collection(COLLECTION_USER_GIFTS).document(userGiftId)
+                val senderSnap = transaction.get(senderRef)
+
+                val senderBalance = senderSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: 1000L)
+                if (senderBalance < skin.priceStars) {
+                    throw InsufficientBalanceException("Недостаточно звёзд ($senderBalance < ${skin.priceStars})")
+                }
+
+                val isSelfGift = effectiveTargetId == effectiveSenderId
+                val targetPinnedCount = if (isSelfGift) {
+                    (senderSnap.getLong("pinned_gifts_count") ?: 0L).toInt()
+                } else {
+                    _pinnedGiftsMap.value[effectiveTargetId]?.count {
+                        it.isPinnedToHeader && !isSampleGiftId(it.userGiftId)
+                    } ?: 0
+                }
+                val shouldPin = pinToHeader && (targetPinnedCount < 12)
+                val newSenderBalance = senderBalance - skin.priceStars
+
+                if (senderSnap.exists()) {
+                    val senderUpdates = mutableMapOf<String, Any>(
+                        "balance" to newSenderBalance,
+                        "updated_at" to now
+                    )
+                    if (isSelfGift && shouldPin) {
+                        senderUpdates["pinned_gifts_count"] = (targetPinnedCount + 1).coerceAtMost(12)
+                    }
+                    transaction.update(senderRef, senderUpdates)
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveSenderId,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = newSenderBalance.coerceIn(0L, 1000L),
+                        role = "user",
+                        pinnedGiftsCount = if (isSelfGift && shouldPin) 1 else 0,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(senderRef, fallbackUser.toFirestoreMap())
+                }
+
+                val senderFallbackName = resolvedSenderDisplay.ifBlank {
+                    senderSnap.getString("display_name")
+                        ?: _currentUserState.value?.displayName?.takeIf { it.isNotBlank() }
+                        ?: ""
+                }
+
+                val userGiftDoc = KuoteXUserGiftDoc(
+                    userGiftId = userGiftId,
+                    catalogGiftId = sanitizeFirestoreId("col_${skin.effectiveCollectionId}", "col"),
+                    senderId = if (isAnonymous) "anonymous" else effectiveSenderId,
+                    receiverId = effectiveTargetId,
+                    isPinnedToHeader = shouldPin,
+                    pinOrderIndex = if (shouldPin) targetPinnedCount else -1,
+                    upgradeLevel = 1,
+                    transferable = true,
+                    message = message,
+                    isAnonymous = isAnonymous,
+                    acquiredAt = now,
+                    cachedTitle = "${skin.baseTitle} (${skin.modelName})",
+                    cachedEmoji = skin.emojiIcon,
+                    cachedColorHex = skin.backdropColorHex,
+                    senderName = if (isAnonymous) "" else senderFallbackName,
+                    senderAvatarUrl = resolvedSenderAvatar,
+                    giftCostStars = skin.priceStars,
+                    isCollectible = true,
+                    serialNumber = skin.serialNumber,
+                    modelName = skin.modelName,
+                    patternName = skin.patternName,
+                    accentColorHex = skin.accentGlowHex,
+                    lottieAssetUrl = skin.effectiveLottieAsset
+                )
+                transaction.set(userGiftRef, userGiftDoc.toFirestoreMap())
+
+                val ledgerDoc = KuoteXLedgerTxDoc(
+                    txId = txId,
+                    idempotencyKey = safeIdempotencyKey,
+                    type = LedgerTransactionType.GIFT_PURCHASE.value,
+                    fromUserId = effectiveSenderId,
+                    toUserId = effectiveTargetId,
+                    amount = skin.priceStars,
+                    fee = 0L,
+                    status = LedgerTransactionStatus.COMMITTED.value,
+                    metadata = mapOf(
+                        "collectible_id" to skin.id,
+                        "serial_number" to skin.serialNumber,
+                        "user_gift_id" to userGiftId
+                    ),
+                    createdAt = now
+                )
+                transaction.set(ledgerRef, ledgerDoc.toFirestoreMap())
+                transaction.set(idempotencyRef, mapOf("tx_id" to txId, "user_id" to effectiveSenderId, "created_at" to now))
+
+                userGiftDoc
+            }.await()
+
+            saveCachedBalance(effectiveSenderId, ((_currentUserState.value?.balance ?: 1000L) - skin.priceStars).coerceAtLeast(0L))
+            _currentUserState.update { curr ->
+                curr?.let { if (it.userId == effectiveSenderId) it.copy(balance = (it.balance - skin.priceStars).coerceAtLeast(0L)) else it }
+            }
+
+            _collectibleMarketplaceGifts.update { list ->
+                val updated = list.map {
+                    if (it.id == collectibleGiftId) it.copy(ownerId = effectiveTargetId, ownerName = "me", isForSale = false) else it
+                }
+                rebuildCollectibleCollections(updated)
+                updated
+            }
+
+            _pinnedGiftsMap.update { currentMap ->
+                val existing = currentMap[effectiveTargetId]?.toMutableList() ?: sampleUserGiftDocs(effectiveTargetId).toMutableList()
+                if (existing.none { it.userGiftId == userGiftResult.userGiftId }) {
+                    existing.add(0, userGiftResult)
+                }
+                currentMap + (effectiveTargetId to existing)
+            }
+
+            com.example.ui.rating.UserRatingManager.recordDirectGiftPurchase(
+                senderUserId = effectiveSenderId,
+                starsSpent = skin.priceStars.toInt()
+            )
+            Result.success(userGiftResult)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (e is InsufficientBalanceException || e is DuplicateTransactionException) {
+                return@withContext Result.failure(e)
+            }
+            handleFirestoreError(e, OperationType.WRITE, "$COLLECTION_USER_GIFTS/$userGiftId")
+            val currentBalance = _currentUserState.value?.balance ?: 1000L
+            if (currentBalance < skin.priceStars) {
+                return@withContext Result.failure(InsufficientBalanceException("Недостаточно звёзд ($currentBalance < ${skin.priceStars})"))
+            }
+
+            _currentUserState.update { curr ->
+                curr?.copy(balance = (curr.balance - skin.priceStars).coerceAtLeast(0L))
+                    ?: KuoteXUserDoc(userId = senderUserId, username = "me", displayName = "Me", balance = (1000L - skin.priceStars).coerceAtLeast(0L))
+            }
+
+            _collectibleMarketplaceGifts.update { list ->
+                val updated = list.map {
+                    if (it.id == collectibleGiftId) it.copy(ownerId = safeTargetFallback, ownerName = "me", isForSale = false) else it
+                }
+                rebuildCollectibleCollections(updated)
+                updated
+            }
+
+            val existing = _pinnedGiftsMap.value[safeTargetFallback]?.toMutableList()
+                ?: sampleUserGiftDocs(safeTargetFallback).toMutableList()
+            val realPinnedCount = existing.count { it.isPinnedToHeader && !isSampleGiftId(it.userGiftId) }
+            val shouldPin = pinToHeader && (realPinnedCount < 12)
+
+            val localDoc = KuoteXUserGiftDoc(
+                userGiftId = userGiftId,
+                catalogGiftId = "col_${skin.effectiveCollectionId}",
+                senderId = if (isAnonymous) "anonymous" else senderUserId,
+                receiverId = safeTargetFallback,
+                isPinnedToHeader = shouldPin,
+                pinOrderIndex = if (shouldPin) realPinnedCount else -1,
+                upgradeLevel = 1,
+                transferable = true,
+                message = message,
+                isAnonymous = isAnonymous,
+                acquiredAt = now,
+                cachedTitle = "${skin.baseTitle} (${skin.modelName})",
+                cachedEmoji = skin.emojiIcon,
+                cachedColorHex = skin.backdropColorHex,
+                senderName = resolvedSenderDisplay,
+                senderAvatarUrl = resolvedSenderAvatar,
+                giftCostStars = skin.priceStars,
+                isCollectible = true,
+                serialNumber = skin.serialNumber,
+                modelName = skin.modelName,
+                patternName = skin.patternName,
+                accentColorHex = skin.accentGlowHex,
+                lottieAssetUrl = skin.effectiveLottieAsset
+            )
+            if (existing.none { it.userGiftId == localDoc.userGiftId }) {
+                existing.add(0, localDoc)
+            }
+            _pinnedGiftsMap.update { it + (safeTargetFallback to existing) }
+
+            com.example.ui.rating.UserRatingManager.recordDirectGiftPurchase(
+                senderUserId = senderUserId,
+                starsSpent = skin.priceStars.toInt()
+            )
+            Result.success(localDoc)
+        }
+    }
+
+    /**
+     * ATOMIC TRANSACTION: Gift KuoteX Premium (3 / 6 / 12 months) using Stars.
+     * Applies VIP immediately for self-gifts or issues a claimable VIP pass to recipient's profile.
+     */
+    suspend fun giftPremiumSubscriptionAtomic(
+        senderUserId: String,
+        targetUserId: String,
+        months: Int,
+        priceStars: Long,
+        senderName: String = "",
+        senderAvatarUrl: String = "",
+        idempotencyKey: String
+    ): Result<KuoteXUserGiftDoc> = withContext(Dispatchers.IO) {
+        val safeTarget = targetUserId.ifBlank { senderUserId }
+        val authUid = currentAuthUid()?.takeIf { it.isNotBlank() }
+        val isSelfGift = (safeTarget == "me" || safeTarget == senderUserId || (authUid != null && safeTarget == authUid))
+        val now = System.currentTimeMillis()
+        val durationMs = months * 30L * 86400000L
+        val userGiftId = "ug_vip_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+        val txId = "tx_vipp_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+
+        if (isSelfGift) {
+            val res = activateVipSubscriptionAtomic(senderUserId, months, idempotencyKey, priceStars)
+            return@withContext res.map {
+                KuoteXUserGiftDoc(
+                    userGiftId = userGiftId,
+                    catalogGiftId = "gift_premium_${months}m",
+                    senderId = authUid ?: senderUserId,
+                    receiverId = authUid ?: senderUserId,
+                    isPinnedToHeader = true,
+                    pinOrderIndex = 0,
+                    upgradeLevel = 5,
+                    acquiredAt = now,
+                    cachedTitle = "KuoteX Premium ($months мес.)",
+                    cachedEmoji = "⭐",
+                    cachedColorHex = "#241242",
+                    senderName = senderName,
+                    senderAvatarUrl = senderAvatarUrl,
+                    giftCostStars = priceStars,
+                    lottieAssetUrl = "gift_star_premium.json",
+                    premiumClaimed = true
+                )
+            }
+        }
+
+        try {
+            val db = getDbOrNull() ?: throw IllegalStateException("Firestore unavailable")
+            val effectiveSender = authUid ?: throw IllegalStateException("User not signed in")
+            val effectiveTarget = safeTarget.take(128)
+            val safeIdem = sanitizeFirestoreId(idempotencyKey, "vipp")
+
+            val passDoc = db.runTransaction { transaction ->
+                val idemRef = db.collection(COLLECTION_IDEMPOTENCY).document(safeIdem)
+                if (transaction.get(idemRef).exists()) {
+                    throw DuplicateTransactionException("Idempotency key already processed")
+                }
+
+                val senderRef = db.collection(COLLECTION_USERS).document(effectiveSender)
+                val userGiftRef = db.collection(COLLECTION_USER_GIFTS).document(userGiftId)
+                val ledgerRef = db.collection(COLLECTION_LEDGER_TX).document(txId)
+                val senderSnap = transaction.get(senderRef)
+
+                val balance = senderSnap.getLong("balance") ?: (_currentUserState.value?.balance ?: 1000L)
+                if (balance < priceStars) {
+                    throw InsufficientBalanceException("Недостаточно звёзд ($balance < $priceStars)")
+                }
+
+                val newBalance = balance - priceStars
+                if (senderSnap.exists()) {
+                    transaction.update(senderRef, mapOf("balance" to newBalance, "updated_at" to now))
+                } else {
+                    val fallbackUser = KuoteXUserDoc(
+                        userId = effectiveSender,
+                        username = _currentUserState.value?.username?.ifBlank { "user" } ?: "user",
+                        displayName = _currentUserState.value?.displayName?.ifBlank { "User" } ?: "User",
+                        balance = newBalance.coerceIn(0L, 1000L),
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    transaction.set(senderRef, fallbackUser.toFirestoreMap())
+                }
+
+                val doc = KuoteXUserGiftDoc(
+                    userGiftId = userGiftId,
+                    catalogGiftId = "gift_premium_${months}m",
+                    senderId = effectiveSender,
+                    receiverId = effectiveTarget,
+                    isPinnedToHeader = true,
+                    pinOrderIndex = 0,
+                    upgradeLevel = 5,
+                    message = "KuoteX Premium на $months мес.",
+                    acquiredAt = now,
+                    cachedTitle = "KuoteX Premium ($months мес.)",
+                    cachedEmoji = "⭐",
+                    cachedColorHex = "#241242",
+                    senderName = senderName.ifBlank { senderSnap.getString("display_name") ?: "" },
+                    senderAvatarUrl = senderAvatarUrl,
+                    giftCostStars = priceStars,
+                    accentColorHex = "#A855F7",
+                    lottieAssetUrl = "gift_star_premium.json",
+                    premiumClaimed = false
+                )
+                transaction.set(userGiftRef, doc.toFirestoreMap())
+
+                transaction.set(
+                    ledgerRef,
+                    KuoteXLedgerTxDoc(
+                        txId = txId,
+                        idempotencyKey = safeIdem,
+                        type = LedgerTransactionType.VIP_SUBSCRIPTION.value,
+                        fromUserId = effectiveSender,
+                        toUserId = effectiveTarget,
+                        amount = priceStars,
+                        status = LedgerTransactionStatus.COMMITTED.value,
+                        metadata = mapOf("months" to months, "user_gift_id" to userGiftId),
+                        createdAt = now
+                    ).toFirestoreMap()
+                )
+                transaction.set(idemRef, mapOf("tx_id" to txId, "user_id" to effectiveSender, "created_at" to now))
+                doc
+            }.await()
+
+            saveCachedBalance(effectiveSender, ((_currentUserState.value?.balance ?: 1000L) - priceStars).coerceAtLeast(0L))
+            _currentUserState.update { curr ->
+                curr?.let { if (it.userId == effectiveSender) it.copy(balance = (it.balance - priceStars).coerceAtLeast(0L)) else it }
+            }
+            _pinnedGiftsMap.update { currentMap ->
+                val existing = currentMap[effectiveTarget]?.toMutableList() ?: sampleUserGiftDocs(effectiveTarget).toMutableList()
+                existing.add(0, passDoc)
+                currentMap + (effectiveTarget to existing)
+            }
+            com.example.ui.rating.UserRatingManager.recordDirectGiftPurchase(effectiveSender, priceStars.toInt())
+            Result.success(passDoc)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (e is InsufficientBalanceException || e is DuplicateTransactionException) {
+                return@withContext Result.failure(e)
+            }
+            handleFirestoreError(e, OperationType.WRITE, "$COLLECTION_USER_GIFTS/$userGiftId")
+            val currentBalance = _currentUserState.value?.balance ?: 1000L
+            if (currentBalance < priceStars) {
+                return@withContext Result.failure(InsufficientBalanceException("Недостаточно звёзд ($currentBalance < $priceStars)"))
+            }
+            _currentUserState.update { curr ->
+                curr?.copy(balance = (curr.balance - priceStars).coerceAtLeast(0L))
+            }
+            val localPass = KuoteXUserGiftDoc(
+                userGiftId = userGiftId,
+                catalogGiftId = "gift_premium_${months}m",
+                senderId = senderUserId,
+                receiverId = safeTarget,
+                isPinnedToHeader = true,
+                pinOrderIndex = 0,
+                upgradeLevel = 5,
+                message = "KuoteX Premium на $months мес.",
+                acquiredAt = now,
+                cachedTitle = "KuoteX Premium ($months мес.)",
+                cachedEmoji = "⭐",
+                cachedColorHex = "#241242",
+                senderName = senderName,
+                senderAvatarUrl = senderAvatarUrl,
+                giftCostStars = priceStars,
+                accentColorHex = "#A855F7",
+                lottieAssetUrl = "gift_star_premium.json",
+                premiumClaimed = false
+            )
+            _pinnedGiftsMap.update { currentMap ->
+                val existing = currentMap[safeTarget]?.toMutableList() ?: sampleUserGiftDocs(safeTarget).toMutableList()
+                existing.add(0, localPass)
+                currentMap + (safeTarget to existing)
+            }
+            Result.success(localPass)
+        }
+    }
+
+    private suspend fun redeemReceivedPremiumGiftsIfNeeded(uid: String, gifts: List<KuoteXUserGiftDoc>) {
+        val db = getDbOrNull() ?: return
+        val authUid = currentAuthUid() ?: return
+        if (uid != authUid) return
+
+        val unclaimed = gifts.filter {
+            it.catalogGiftId.startsWith("gift_premium_") && !it.premiumClaimed && it.receiverId == authUid
+        }
+        if (unclaimed.isEmpty()) return
+
+        for (gift in unclaimed) {
+            val months = gift.catalogGiftId
+                .removePrefix("gift_premium_")
+                .removeSuffix("m")
+                .toIntOrNull()
+                ?.coerceIn(1, 24) ?: 3
+            val now = System.currentTimeMillis()
+            val durationMs = months * 30L * 86400000L
+            try {
+                db.runTransaction { tx ->
+                    val userRef = db.collection(COLLECTION_USERS).document(authUid)
+                    val giftRef = db.collection(COLLECTION_USER_GIFTS).document(gift.userGiftId)
+                    val userSnap = tx.get(userRef)
+                    val giftSnap = tx.get(giftRef)
+                    if (!giftSnap.exists() || giftSnap.getBoolean("premium_claimed") == true) return@runTransaction
+
+                    val currentExp = userSnap.getLong("vip_expiration") ?: 0L
+                    val newExp = (if (currentExp > now) currentExp else now) + durationMs
+                    val currentVotes = (userSnap.getLong("available_boost_votes") ?: 0L).toInt()
+                    val newVotes = currentVotes + (4 * months)
+
+                    if (userSnap.exists()) {
+                        tx.update(
+                            userRef,
+                            mapOf(
+                                "vip_status" to true,
+                                "vip_expiration" to newExp,
+                                "available_boost_votes" to newVotes,
+                                "updated_at" to now
+                            )
+                        )
+                    }
+                    tx.update(giftRef, mapOf("premium_claimed" to true))
+                }.await()
+                _currentUserState.update { curr ->
+                    curr?.copy(
+                        vipStatus = true,
+                        vipExpiration = (if (curr.vipExpiration > now) curr.vipExpiration else now) + durationMs,
+                        availableBoostVotes = curr.availableBoostVotes + (4 * months),
+                        updatedAt = now
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to auto-claim Premium gift ${gift.userGiftId}: ${e.message}")
+            }
         }
     }
 
@@ -1036,8 +1873,13 @@ object KuoteXEcosystemFirestoreManager {
         userGiftId: String,
         catalogGiftId: String
     ): Result<Long> {
+        val storedGift = _pinnedGiftsMap.value[userId]?.find { it.userGiftId == userGiftId }
         val catalogGift = _catalogGifts.value.find { it.catalogGiftId == catalogGiftId }
-        val giftPriceStars = catalogGift?.price ?: 50L
+        val giftPriceStars = when {
+            storedGift != null && storedGift.giftCostStars > 0L -> storedGift.giftCostStars
+            catalogGift != null && catalogGift.price > 0L -> catalogGift.price
+            else -> 50L
+        }
         val starsCredited = (giftPriceStars * 0.85).toLong().coerceAtLeast(1L)
 
         _pinnedGiftsMap.update { currentMap ->
@@ -1672,6 +2514,11 @@ Result.failure(PaymentOutcomeUnknown(providerTxId, "Не удалось связ
             }
             val remoteGifts = (snapshot?.documents?.mapNotNull { it.toObject(KuoteXUserGiftDoc::class.java) } ?: emptyList())
                 .sortedByDescending { it.acquiredAt }
+            if (userId == authUid && remoteGifts.any { it.catalogGiftId.startsWith("gift_premium_") && !it.premiumClaimed }) {
+                managerScope.launch {
+                    redeemReceivedPremiumGiftsIfNeeded(userId, remoteGifts)
+                }
+            }
             val remoteIds = remoteGifts.mapTo(HashSet()) { it.userGiftId }
             var mergedResult: List<KuoteXUserGiftDoc> = remoteGifts
             _pinnedGiftsMap.update { currentMap ->

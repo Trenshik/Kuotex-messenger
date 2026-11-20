@@ -170,7 +170,27 @@ data class KuoteXUserGiftDoc(
     @get:PropertyName("cached_emoji") @set:PropertyName("cached_emoji")
     var cachedEmoji: String = "🎁",
     @get:PropertyName("cached_color_hex") @set:PropertyName("cached_color_hex")
-    var cachedColorHex: String = "#1E293B"
+    var cachedColorHex: String = "#1E293B",
+    @get:PropertyName("sender_name") @set:PropertyName("sender_name")
+    var senderName: String = "",
+    @get:PropertyName("sender_avatar_url") @set:PropertyName("sender_avatar_url")
+    var senderAvatarUrl: String = "",
+    @get:PropertyName("gift_cost_stars") @set:PropertyName("gift_cost_stars")
+    var giftCostStars: Long = 0L,
+    @get:PropertyName("is_collectible") @set:PropertyName("is_collectible")
+    var isCollectible: Boolean = false,
+    @get:PropertyName("serial_number") @set:PropertyName("serial_number")
+    var serialNumber: Int = 0,
+    @get:PropertyName("model_name") @set:PropertyName("model_name")
+    var modelName: String = "",
+    @get:PropertyName("pattern_name") @set:PropertyName("pattern_name")
+    var patternName: String = "",
+    @get:PropertyName("accent_color_hex") @set:PropertyName("accent_color_hex")
+    var accentColorHex: String = "",
+    @get:PropertyName("lottie_asset_url") @set:PropertyName("lottie_asset_url")
+    var lottieAssetUrl: String = "",
+    @get:PropertyName("premium_claimed") @set:PropertyName("premium_claimed")
+    var premiumClaimed: Boolean = false
 )
 
 /**
@@ -290,21 +310,31 @@ fun KuoteXCatalogGiftDoc.toFirestoreMap(): Map<String, Any> = mapOf(
     "created_at" to createdAt.coerceAtLeast(1L)
 )
 
-fun KuoteXUserGiftDoc.toFirestoreMap(): Map<String, Any> = mapOf(
-    "catalog_gift_id" to catalogGiftId.take(128),
-    "sender_id" to senderId.take(128),
-    "receiver_id" to receiverId.take(128),
-    "is_pinned_to_header" to isPinnedToHeader,
-    "pin_order_index" to pinOrderIndex,
-    "upgrade_level" to upgradeLevel.coerceIn(1, 10),
-    "transferable" to transferable,
-    "message" to message.take(500),
-    "is_anonymous" to isAnonymous,
-    "acquired_at" to acquiredAt.coerceAtLeast(1L),
-    "cached_title" to cachedTitle.take(100),
-    "cached_emoji" to cachedEmoji.take(32),
-    "cached_color_hex" to cachedColorHex.take(32)
-)
+fun KuoteXUserGiftDoc.toFirestoreMap(): Map<String, Any> = buildMap {
+    put("catalog_gift_id", catalogGiftId.take(128))
+    put("sender_id", senderId.take(128))
+    put("receiver_id", receiverId.take(128))
+    put("is_pinned_to_header", isPinnedToHeader)
+    put("pin_order_index", pinOrderIndex)
+    put("upgrade_level", upgradeLevel.coerceIn(1, 10))
+    put("transferable", transferable)
+    put("message", message.take(500))
+    put("is_anonymous", isAnonymous)
+    put("acquired_at", acquiredAt.coerceAtLeast(1L))
+    put("cached_title", cachedTitle.take(100))
+    put("cached_emoji", cachedEmoji.take(32))
+    put("cached_color_hex", cachedColorHex.take(32))
+    if (senderName.isNotBlank()) put("sender_name", senderName.take(100))
+    if (senderAvatarUrl.isNotBlank()) put("sender_avatar_url", senderAvatarUrl.take(500))
+    if (giftCostStars >= 0L) put("gift_cost_stars", giftCostStars)
+    if (isCollectible) put("is_collectible", true)
+    if (serialNumber > 0) put("serial_number", serialNumber)
+    if (modelName.isNotBlank()) put("model_name", modelName.take(100))
+    if (patternName.isNotBlank()) put("pattern_name", patternName.take(100))
+    if (accentColorHex.isNotBlank()) put("accent_color_hex", accentColorHex.take(32))
+    if (lottieAssetUrl.isNotBlank()) put("lottie_asset_url", lottieAssetUrl.take(200))
+    if (premiumClaimed) put("premium_claimed", true)
+}
 
 fun KuoteXLedgerTxDoc.toFirestoreMap(): Map<String, Any> = mapOf(
     "idempotency_key" to idempotencyKey.take(128),

@@ -117,6 +117,7 @@ dependencies {
   implementation(libs.androidx.sqlite.ktx)
   implementation(libs.coil.compose)
   implementation(libs.coil.gif)
+  implementation(libs.lottie.compose)
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   implementation(libs.kotlinx.coroutines.android)

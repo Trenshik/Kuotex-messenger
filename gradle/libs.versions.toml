@@ -50,6 +50,7 @@ tink = "1.8.0"
 media3 = "1.5.1"
 securityCrypto = "1.1.0-alpha06"
 koin = "3.5.6"
+lottieCompose = "6.6.2"
 
 [libraries]
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
@@ -116,6 +117,7 @@ firebase-ai = { group = "com.google.firebase", name = "firebase-ai" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 android-database-sqlcipher = { group = "net.zetetic", name = "android-database-sqlcipher", version.ref = "sqlcipher" }
 androidx-sqlite-ktx = { group = "androidx.sqlite", name = "sqlite-ktx", version.ref = "sqliteKtx" }
+lottie-compose = { group = "com.airbnb.android", name = "lottie-compose", version.ref = "lottieCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

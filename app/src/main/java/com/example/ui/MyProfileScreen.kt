@@ -80,6 +80,7 @@ import com.example.ui.rating.UserRatingLevelStatusRow
 @Composable
 fun MyProfileScreen(viewModel: AppViewModel, navController: NavController) {
     val activeAccount = LocalActiveAccount.current ?: return
+    val chats by viewModel.chats.collectAsStateWithLifecycle()
     val isQrSnowflakesEnabled by viewModel.isQrSnowflakesEnabled.collectAsState()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -538,7 +539,7 @@ fun MyProfileScreen(viewModel: AppViewModel, navController: NavController) {
                         selectedGiftForDetail = gift
                     },
                     onAddGiftClick = {
-                        navController.navigate("gifts_marketplace?userId=${activeAccount.id}&userName=${activeAccount.displayName}")
+                        navController.navigate(AppDestinations.giftsMarketplace(activeAccount.id, activeAccount.displayName))
                     }
                 )
             }
@@ -920,7 +921,19 @@ fun MyProfileScreen(viewModel: AppViewModel, navController: NavController) {
                     )
                     val credited = res.getOrNull() ?: 0L
                     android.widget.Toast.makeText(context, "Подарок обменян на +$credited ⭐", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                },
+                onSendGiftBack = { gift ->
+                    val resolvedName = com.example.ui.gifts.SenderIdentityResolver.resolveSenderName(
+                        rawSenderId = gift.senderId,
+                        storedSenderName = gift.senderName,
+                        isAnonymous = gift.isAnonymous,
+                        chats = chats,
+                        activeAccount = activeAccount
+                    )
+                    navController.navigate(AppDestinations.giftsMarketplace(gift.senderId, resolvedName))
+                },
+                chats = chats,
+                activeAccount = activeAccount
             )
         }
 

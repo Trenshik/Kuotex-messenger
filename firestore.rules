@@ -278,7 +278,11 @@ service cloud.firestore {
                'catalog_gift_id', 'sender_id', 'receiver_id',
                'is_pinned_to_header', 'pin_order_index', 'upgrade_level',
                'transferable', 'message', 'is_anonymous', 'acquired_at',
-               'cached_title', 'cached_emoji', 'cached_color_hex'
+               'cached_title', 'cached_emoji', 'cached_color_hex',
+               'sender_name', 'sender_avatar_url', 'gift_cost_stars',
+               'is_collectible', 'serial_number', 'model_name',
+               'pattern_name', 'accent_color_hex', 'lottie_asset_url',
+               'premium_claimed'
              ]) &&
              isBoundedString(data.catalog_gift_id, 1, 128) &&
              isBoundedString(data.sender_id, 1, 128) &&
@@ -292,7 +296,17 @@ service cloud.firestore {
              data.acquired_at is int && data.acquired_at > 0 &&
              isOptionalBoundedString(data, 'cached_title', 100) &&
              isOptionalBoundedString(data, 'cached_emoji', 32) &&
-             isOptionalBoundedString(data, 'cached_color_hex', 32);
+             isOptionalBoundedString(data, 'cached_color_hex', 32) &&
+             isOptionalBoundedString(data, 'sender_name', 100) &&
+             isOptionalBoundedString(data, 'sender_avatar_url', 500) &&
+             (!('gift_cost_stars' in data) || (data.gift_cost_stars is int && data.gift_cost_stars >= 0)) &&
+             isOptionalBool(data, 'is_collectible') &&
+             (!('serial_number' in data) || (data.serial_number is int && data.serial_number >= 0)) &&
+             isOptionalBoundedString(data, 'model_name', 100) &&
+             isOptionalBoundedString(data, 'pattern_name', 100) &&
+             isOptionalBoundedString(data, 'accent_color_hex', 32) &&
+             isOptionalBoundedString(data, 'lottie_asset_url', 200) &&
+             isOptionalBool(data, 'premium_claimed');
     }
 
     function isValidLedgerTx(data) {
@@ -641,7 +655,7 @@ service cloud.firestore {
                        incoming().receiver_id == existing().receiver_id &&
                        incoming().acquired_at == existing().acquired_at &&
                        incoming().diff(existing()).affectedKeys().hasOnly([
-                         'upgrade_level', 'transferable', 'is_pinned_to_header', 'pin_order_index'
+                         'upgrade_level', 'transferable', 'is_pinned_to_header', 'pin_order_index', 'premium_claimed'
                        ]);
 
       allow delete: if false;

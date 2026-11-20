@@ -80,6 +80,7 @@ object AppDestinations {
     const val MY_PROFILE = "my_profile"
     const val PROFILE = "profile/{chatId}"
     const val GIFTS_MARKETPLACE = "gifts_marketplace?userId={userId}&userName={userName}"
+    const val COLLECTIBLE_COLLECTION = "collectible_collection/{collectionId}?userId={userId}&userName={userName}"
     const val GROUP_ADMIN = "group_admin/{chatId}"
     const val CHANNEL_ADMIN = "channel_admin/{chatId}"
     const val CHANNEL_ADMIN_TYPE = "channel_admin/{chatId}/type"
@@ -112,7 +113,19 @@ object AppDestinations {
     fun broadcast(streamId: String? = null) = if (streamId != null) "broadcast/$streamId" else "broadcast"
     fun profile(chatId: String) = "profile/$chatId"
     fun giftsMarketplace(userId: String? = null, userName: String? = null): String {
-        return if (userId != null) "gifts_marketplace?userId=$userId&userName=${userName ?: ""}" else "gifts_marketplace"
+        return if (userId != null) {
+            val encId = android.net.Uri.encode(userId)
+            val encName = android.net.Uri.encode(userName ?: "")
+            "gifts_marketplace?userId=$encId&userName=$encName"
+        } else {
+            "gifts_marketplace"
+        }
+    }
+    fun collectibleCollection(collectionId: String, userId: String? = null, userName: String? = null): String {
+        val encCol = android.net.Uri.encode(collectionId)
+        val encId = userId?.let { android.net.Uri.encode(it) } ?: ""
+        val encName = userName?.let { android.net.Uri.encode(it) } ?: ""
+        return "collectible_collection/$encCol?userId=$encId&userName=$encName"
     }
     fun groupAdmin(chatId: String) = "group_admin/$chatId"
     fun channelAdmin(chatId: String) = "channel_admin/$chatId"
@@ -592,11 +605,40 @@ fun MainAppNavGraph(
                 navArgument("userName") { nullable = true; defaultValue = null }
             )
         ) { backStackEntry ->
-            val targetUserId = backStackEntry.arguments?.getString("userId")
-            val targetUserName = backStackEntry.arguments?.getString("userName")
+            val targetUserId = backStackEntry.arguments?.getString("userId")?.takeIf { it.isNotBlank() }?.let {
+                runCatching { android.net.Uri.decode(it) }.getOrDefault(it)
+            }
+            val targetUserName = backStackEntry.arguments?.getString("userName")?.takeIf { it.isNotBlank() }?.let {
+                runCatching { android.net.Uri.decode(it) }.getOrDefault(it)
+            }
             com.example.ui.gifts.GiftMarketplaceScreen(
                 viewModel = viewModel,
                 navController = navController,
+                targetUserId = targetUserId,
+                targetUserName = targetUserName
+            )
+        }
+        composable(
+            route = AppDestinations.COLLECTIBLE_COLLECTION,
+            arguments = listOf(
+                navArgument("collectionId") { type = NavType.StringType },
+                navArgument("userId") { nullable = true; defaultValue = null },
+                navArgument("userName") { nullable = true; defaultValue = null }
+            )
+        ) { backStackEntry ->
+            val collectionId = backStackEntry.arguments?.getString("collectionId")?.let {
+                runCatching { android.net.Uri.decode(it) }.getOrDefault(it)
+            }.orEmpty()
+            val targetUserId = backStackEntry.arguments?.getString("userId")?.takeIf { it.isNotBlank() }?.let {
+                runCatching { android.net.Uri.decode(it) }.getOrDefault(it)
+            }
+            val targetUserName = backStackEntry.arguments?.getString("userName")?.takeIf { it.isNotBlank() }?.let {
+                runCatching { android.net.Uri.decode(it) }.getOrDefault(it)
+            }
+            com.example.ui.gifts.CollectibleCollectionScreen(
+                viewModel = viewModel,
+                navController = navController,
+                collectionId = collectionId,
                 targetUserId = targetUserId,
                 targetUserName = targetUserName
             )

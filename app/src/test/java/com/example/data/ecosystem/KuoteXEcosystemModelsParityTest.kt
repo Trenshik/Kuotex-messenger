@@ -85,9 +85,47 @@ class KuoteXEcosystemModelsParityTest {
                 "catalog_gift_id", "sender_id", "receiver_id",
                 "is_pinned_to_header", "pin_order_index", "upgrade_level",
                 "transferable", "message", "is_anonymous", "acquired_at",
-                "cached_title", "cached_emoji", "cached_color_hex"
+                "cached_title", "cached_emoji", "cached_color_hex",
+                "gift_cost_stars"
             ),
             userGift.keys
+        )
+
+        val collectibleUserGift = KuoteXUserGiftDoc(
+            userGiftId = "ug_skin_123",
+            catalogGiftId = "col_mirage_lamp",
+            senderId = "u1",
+            receiverId = "u2",
+            isPinnedToHeader = true,
+            pinOrderIndex = 0,
+            upgradeLevel = 1,
+            transferable = true,
+            message = "Skin gift",
+            isAnonymous = false,
+            acquiredAt = 1700000000000L,
+            senderName = "Gubka",
+            senderAvatarUrl = "https://example.com/avatar.jpg",
+            giftCostStars = 471L,
+            isCollectible = true,
+            serialNumber = 22770,
+            modelName = "Genie Lantern",
+            patternName = "Scarab",
+            accentColorHex = "#C084FC",
+            lottieAssetUrl = "gift_lamp_lottie.json",
+            premiumClaimed = true
+        ).toFirestoreMap()
+        assertEquals(
+            setOf(
+                "catalog_gift_id", "sender_id", "receiver_id",
+                "is_pinned_to_header", "pin_order_index", "upgrade_level",
+                "transferable", "message", "is_anonymous", "acquired_at",
+                "cached_title", "cached_emoji", "cached_color_hex",
+                "sender_name", "sender_avatar_url", "gift_cost_stars",
+                "is_collectible", "serial_number", "model_name",
+                "pattern_name", "accent_color_hex", "lottie_asset_url",
+                "premium_claimed"
+            ),
+            collectibleUserGift.keys
         )
 
         val ledger = KuoteXLedgerTxDoc(

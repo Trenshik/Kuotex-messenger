@@ -212,7 +212,17 @@
         "acquired_at": { "type": "integer", "description": "Acquisition epoch millis" },
         "cached_title": { "type": "string", "description": "Cached gift title" },
         "cached_emoji": { "type": "string", "description": "Cached emoji" },
-        "cached_color_hex": { "type": "string", "description": "Cached hex background" }
+        "cached_color_hex": { "type": "string", "description": "Cached hex background" },
+        "sender_name": { "type": "string", "description": "Resolved sender display nickname" },
+        "sender_avatar_url": { "type": "string", "description": "Sender avatar photo URL" },
+        "gift_cost_stars": { "type": "integer", "description": "Purchase price in Stars" },
+        "is_collectible": { "type": "boolean", "description": "Whether gift is a collectible skin" },
+        "serial_number": { "type": "integer", "description": "Collectible serial number" },
+        "model_name": { "type": "string", "description": "Collectible skin model name" },
+        "pattern_name": { "type": "string", "description": "Collectible backdrop pattern name" },
+        "accent_color_hex": { "type": "string", "description": "Collectible accent hex color" },
+        "lottie_asset_url": { "type": "string", "description": "Bundled Lottie asset name" },
+        "premium_claimed": { "type": "boolean", "description": "Whether gifted VIP pass has been applied" }
       },
       "required": ["catalog_gift_id", "sender_id", "receiver_id", "is_pinned_to_header", "upgrade_level", "acquired_at"]
     },

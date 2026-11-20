@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -133,10 +134,15 @@ import com.example.data.ecosystem.KuoteXUserGiftDoc
 import com.example.ui.Chat
 import com.example.ui.gifts.CollectibleGift
 import com.example.ui.gifts.CollectibleGiftDetailBottomSheet
+import com.example.ui.gifts.GiftLottieArt
+import com.example.ui.gifts.PatternedGiftBackdrop
 import com.example.ui.gifts.PinnedCollectibleBadge
 import com.example.ui.gifts.PinnedGift
 import com.example.ui.gifts.PinnedGiftDetailBottomSheet
 import com.example.ui.gifts.PinnedGiftsHeader
+import com.example.ui.gifts.SenderAvatarBadge
+import com.example.ui.gifts.SenderIdentityResolver
+import com.example.ui.navigation.AppDestinations
 import com.example.ui.rating.UserRatingBottomSheet
 import com.example.ui.rating.UserRatingLevelStatusRow
 import kotlinx.coroutines.launch
@@ -462,7 +468,7 @@ fun ProfileScreen(
                 ) {
                     Button(
                         onClick = {
-                            navController.navigate("gifts_marketplace?userId=$chatId&userName=${chat.title}")
+                            navController.navigate(AppDestinations.giftsMarketplace(chatId, chat.title))
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -699,7 +705,7 @@ fun ProfileScreen(
                                             showOptionsMenu = false
                                             scope.launch {
                                                 kotlinx.coroutines.delay(30)
-                                                navController.navigate("gifts_marketplace?userId=$chatId&userName=${chat.title}")
+                                                navController.navigate(AppDestinations.giftsMarketplace(chatId, chat.title))
                                             }
                                         }
                                     )
@@ -824,7 +830,7 @@ fun ProfileScreen(
                                         text = "Подарок",
                                         modifier = Modifier.weight(1f),
                                         onClick = {
-                                            navController.navigate("gifts_marketplace?userId=$chatId&userName=${chat.title}")
+                                            navController.navigate(AppDestinations.giftsMarketplace(chatId, chat.title))
                                         }
                                     )
                                 }
@@ -1010,59 +1016,69 @@ fun ProfileScreen(
                 }
             }
 
-            // Sub-filter pills: "Все подарки", "🧸 Сестра."
+            // Sub-filter pills: "Все подарки" + resolved non-anonymous senders
             if (selectedTab == 0) {
                 item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    val senderFilterOptions = remember(userGifts, chats, activeAccount) {
+                        val senders = userGifts
+                            .filter { !it.isAnonymous }
+                            .map { g ->
+                                SenderIdentityResolver.resolveSenderName(
+                                    rawSenderId = g.senderId,
+                                    storedSenderName = g.senderName,
+                                    isAnonymous = false,
+                                    chats = chats,
+                                    activeAccount = activeAccount
+                                )
+                            }
+                            .filter { it.isNotBlank() && it != "Пользователь" }
+                            .distinct()
+                        listOf("Все подарки") + senders
+                    }
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (selectedGiftFilter == "Все подарки") Color.White.copy(alpha = 0.15f) else Color.Transparent,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { selectedGiftFilter = "Все подарки" }
-                        ) {
-                            Text(
-                                text = "Все подарки",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (selectedGiftFilter == "Сестра") Color.White.copy(alpha = 0.15f) else Color.Transparent,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { selectedGiftFilter = "Сестра" }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        items(senderFilterOptions) { filterLabel ->
+                            val isSelected = selectedGiftFilter == filterLabel
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isSelected) Color.White.copy(alpha = 0.16f) else Color(0xFF181524),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { selectedGiftFilter = filterLabel }
                             ) {
-                                Text(text = "🧸", fontSize = 13.sp)
-                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Сестра.",
-                                    color = Color.White,
-                                    fontSize = 13.sp
+                                    text = filterLabel,
+                                    color = if (isSelected) Color.White else Color.Gray,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                // 5. GIFTS 3-COLUMN GRID (matching Screenshot 2)
+                // 5. GIFTS 3-COLUMN GRID (matching Telegram Gift Grid)
                 item {
-                    val filteredGifts = if (selectedGiftFilter == "Сестра") {
-                        userGifts.filter { it.senderName.contains("Сестра") }
-                    } else userGifts
+                    val filteredGifts = remember(userGifts, selectedGiftFilter, chats, activeAccount) {
+                        if (selectedGiftFilter == "Все подарки") {
+                            userGifts
+                        } else {
+                            userGifts.filter { g ->
+                                !g.isAnonymous && SenderIdentityResolver.resolveSenderName(
+                                    rawSenderId = g.senderId,
+                                    storedSenderName = g.senderName,
+                                    isAnonymous = false,
+                                    chats = chats,
+                                    activeAccount = activeAccount
+                                ) == selectedGiftFilter
+                            }
+                        }
+                    }
 
                     Column(
                         modifier = Modifier
@@ -1081,6 +1097,8 @@ fun ProfileScreen(
                                     Box(modifier = Modifier.weight(1f)) {
                                         UserGiftProfileItem(
                                             gift = gift,
+                                            chats = chats,
+                                            activeAccount = activeAccount,
                                             onClick = { selectedGiftDetail = gift }
                                         )
                                     }
@@ -1117,7 +1135,7 @@ fun ProfileScreen(
         }
     }
 
-    // Detail BottomSheet for clicked gift (allows upgrade & viewing sender)
+    // Detail BottomSheet for clicked gift (allows upgrade, exchange, send-back, & viewing resolved sender)
     selectedGiftDetail?.let { gift ->
         PinnedGiftDetailBottomSheet(
             gift = gift,
@@ -1130,7 +1148,30 @@ fun ProfileScreen(
                         ?: "me"
                     ecosystemManager.upgradeUserGiftAtomic(activeUser, g.id)
                 }
-            }
+            },
+            onUnpinClick = if (isMe) { g ->
+                val ownerId = activeAccount?.id ?: chatId
+                ecosystemManager.unpinUserGift(ownerId, g.id)
+                android.widget.Toast.makeText(context, "Подарок откреплен от профиля", android.widget.Toast.LENGTH_SHORT).show()
+            } else null,
+            onExchangeForStarsClick = if (isMe) { g ->
+                val ownerId = activeAccount?.id ?: chatId
+                val res = ecosystemManager.exchangeUserGiftForStars(ownerId, g.id, g.catalogGiftId)
+                val credited = res.getOrNull() ?: 0L
+                android.widget.Toast.makeText(context, "Подарок обменян на +$credited ⭐", android.widget.Toast.LENGTH_SHORT).show()
+            } else null,
+            onSendGiftBack = { g ->
+                val resolvedSender = SenderIdentityResolver.resolveSenderName(
+                    rawSenderId = g.senderId,
+                    storedSenderName = g.senderName,
+                    isAnonymous = g.isAnonymous,
+                    chats = chats,
+                    activeAccount = activeAccount
+                )
+                navController.navigate(AppDestinations.giftsMarketplace(g.senderId, resolvedSender))
+            },
+            chats = chats,
+            activeAccount = activeAccount
         )
     }
 
@@ -1208,9 +1249,31 @@ private fun ProfileActionButton(
 @Composable
 private fun UserGiftProfileItem(
     gift: PinnedGift,
+    chats: List<Chat>,
+    activeAccount: UserAccount?,
     onClick: () -> Unit
 ) {
-    // Subtle spring animation when the gift item appears in the profile list
+    val context = LocalContext.current
+    val resolvedSenderName = remember(gift.senderId, gift.senderName, gift.isAnonymous, chats, activeAccount) {
+        SenderIdentityResolver.resolveSenderName(
+            rawSenderId = gift.senderId,
+            storedSenderName = gift.senderName,
+            isAnonymous = gift.isAnonymous,
+            chats = chats,
+            activeAccount = activeAccount
+        )
+    }
+    val resolvedSenderAvatar = remember(gift.senderId, gift.senderAvatarUrl, gift.isAnonymous, chats, activeAccount) {
+        SenderIdentityResolver.resolveSenderAvatar(
+            rawSenderId = gift.senderId,
+            storedAvatarUrl = gift.senderAvatarUrl,
+            isAnonymous = gift.isAnonymous,
+            context = context,
+            chats = chats,
+            activeAccount = activeAccount
+        )
+    }
+
     val entranceScale = remember { Animatable(0.82f) }
     val entranceAlpha = remember { Animatable(0f) }
     val entranceOffsetY = remember { Animatable(18f) }
@@ -1250,7 +1313,7 @@ private fun UserGiftProfileItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp)
+            .height(114.dp)
             .graphicsLayer {
                 scaleX = entranceScale.value
                 scaleY = entranceScale.value
@@ -1259,35 +1322,64 @@ private fun UserGiftProfileItem(
             }
             .clip(RoundedCornerShape(16.dp))
             .clickable { onClick() },
-        color = Color(0xFF181524),
+        color = if (gift.isCollectible) gift.parsedBackdropColor else Color(0xFF181524),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+        border = BorderStroke(
+            1.dp,
+            if (gift.isCollectible) gift.parsedAccentColor.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.06f)
+        )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Main Gift Graphic
-            Text(
-                text = gift.emojiIcon,
-                fontSize = 46.sp,
-                modifier = Modifier.align(Alignment.Center)
+            if (gift.isCollectible && gift.patternName.isNotBlank()) {
+                PatternedGiftBackdrop(
+                    backdropColor = gift.parsedBackdropColor,
+                    accentColor = gift.parsedAccentColor,
+                    patternName = gift.patternName,
+                    modifier = Modifier.fillMaxSize(),
+                    patternAlpha = 0.22f
+                )
+            }
+
+            // Main Animated Gift Graphic
+            GiftLottieArt(
+                lottieAssetName = gift.animationAssetUrl,
+                fallbackEmoji = gift.emojiIcon,
+                emojiSize = 42.sp,
+                accentColor = gift.parsedAccentColor,
+                modifier = Modifier
+                    .size(68.dp)
+                    .align(Alignment.Center)
             )
 
-            // Sender badge in top-left corner
-            Box(
+            // Sender avatar / anonymous badge in top-left corner
+            SenderAvatarBadge(
+                senderName = resolvedSenderName,
+                avatarUrl = resolvedSenderAvatar,
+                isAnonymous = gift.isAnonymous,
+                size = 22.dp,
+                borderColor = Color.Black,
                 modifier = Modifier
+                    .align(Alignment.TopStart)
                     .padding(6.dp)
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF8B5CF6))
-                    .border(1.dp, Color.Black, CircleShape)
-                    .align(Alignment.TopStart),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = gift.senderName.take(1).uppercase(),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            )
+
+            // Collectible serial # pill in bottom-start if collectible
+            if (gift.isCollectible && gift.serialNumber > 0) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.Black.copy(alpha = 0.55f),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(5.dp)
+                ) {
+                    Text(
+                        text = gift.formattedSerial,
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                    )
+                }
             }
 
             // Star level badge in bottom-right if upgraded

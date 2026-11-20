@@ -24,7 +24,16 @@ data class PinnedGift(
     val isExclusive: Boolean = true,
     val pinOrderIndex: Int = 0,
     val message: String = "",
-    val acquiredAt: Long = System.currentTimeMillis()
+    val acquiredAt: Long = System.currentTimeMillis(),
+    val senderId: String = "",
+    val senderAvatarUrl: String = "",
+    val isAnonymous: Boolean = false,
+    val costStars: Long = 50L,
+    val isCollectible: Boolean = false,
+    val serialNumber: Int = 0,
+    val modelName: String = "",
+    val patternName: String = "",
+    val accentColorHex: String = ""
 ) {
     /**
      * Rating / Rarity based on upgrade level and exclusivity.
@@ -34,7 +43,7 @@ data class PinnedGift(
             upgradeLevel >= 5 -> RarityTier.MYTHIC
             upgradeLevel >= 4 -> RarityTier.LEGENDARY
             upgradeLevel >= 3 -> RarityTier.EPIC
-            isExclusive -> RarityTier.EXCLUSIVE
+            isExclusive || isCollectible -> RarityTier.EXCLUSIVE
             else -> RarityTier.RARE
         }
 
@@ -45,24 +54,37 @@ data class PinnedGift(
         get() = parseHexColor(backdropColorHex, Color(0xFF1E1B4B))
 
     val parsedAccentColor: Color
-        get() = parseHexColor(accentGlowHex, Color(0xFF8B5CF6))
+        get() = parseHexColor(accentColorHex.ifBlank { accentGlowHex }, Color(0xFF8B5CF6))
+
+    val formattedSerial: String
+        get() = if (serialNumber > 0) "#%,d".format(serialNumber) else ""
 
     fun toUserGiftDoc(targetUserId: String = receiverId): KuoteXUserGiftDoc {
+        val anon = isAnonymous || senderName == "Аноним" || senderName == "anonymous"
         return KuoteXUserGiftDoc(
             userGiftId = id,
             catalogGiftId = catalogGiftId,
-            senderId = senderName,
+            senderId = if (anon) "anonymous" else senderId.ifBlank { senderName },
             receiverId = targetUserId,
             isPinnedToHeader = true,
             pinOrderIndex = pinOrderIndex,
             upgradeLevel = upgradeLevel,
-            transferable = false,
+            transferable = isCollectible,
             message = message,
-            isAnonymous = senderName == "Аноним" || senderName == "anonymous",
+            isAnonymous = anon,
             acquiredAt = acquiredAt,
             cachedTitle = title,
             cachedEmoji = emojiIcon,
-            cachedColorHex = backdropColorHex
+            cachedColorHex = backdropColorHex,
+            senderName = if (anon) "" else senderName,
+            senderAvatarUrl = if (anon) "" else senderAvatarUrl,
+            giftCostStars = costStars,
+            isCollectible = isCollectible,
+            serialNumber = serialNumber,
+            modelName = modelName,
+            patternName = patternName,
+            accentColorHex = accentColorHex.ifBlank { accentGlowHex },
+            lottieAssetUrl = animationAssetUrl
         )
     }
 
@@ -89,25 +111,42 @@ data class PinnedGift(
             userGift: KuoteXUserGiftDoc,
             catalog: KuoteXCatalogGiftDoc? = null
         ): PinnedGift {
-            val title = catalog?.title ?: userGift.cachedTitle
-            val emoji = catalog?.emojiIcon ?: userGift.cachedEmoji
-            val backdrop = catalog?.backdropColorHex ?: userGift.cachedColorHex
-            val isExcl = catalog?.isExclusive ?: true
-            val lottie = catalog?.lottieAssetUrl ?: ""
+            val title = catalog?.title?.takeIf { !userGift.isCollectible } ?: userGift.cachedTitle.ifBlank { catalog?.title ?: "Подарок" }
+            val emoji = userGift.cachedEmoji.ifBlank { catalog?.emojiIcon ?: "🎁" }
+            val backdrop = userGift.cachedColorHex.ifBlank { catalog?.backdropColorHex ?: "#1E1B4B" }
+            val isExcl = catalog?.isExclusive ?: userGift.isCollectible
+            val lottie = userGift.lottieAssetUrl.ifBlank {
+                resolveGiftLottieAsset(catalog?.lottieAssetUrl, emoji, title)
+            }
 
-            val accent = when (userGift.upgradeLevel) {
-                5 -> "#FFD700" // Gold / Mythic
-                4 -> "#F43F5E" // Crimson / Legendary
-                3 -> "#A855F7" // Purple / Epic
-                2 -> "#3B82F6" // Blue / Rare
-                else -> "#10B981" // Emerald
+            val accent = userGift.accentColorHex.ifBlank {
+                when (userGift.upgradeLevel) {
+                    5 -> "#FFD700" // Gold / Mythic
+                    4 -> "#F43F5E" // Crimson / Legendary
+                    3 -> "#A855F7" // Purple / Epic
+                    2 -> "#3B82F6" // Blue / Rare
+                    else -> "#10B981" // Emerald
+                }
+            }
+
+            val anon = userGift.isAnonymous || userGift.senderId.equals("anonymous", ignoreCase = true)
+            val resolvedSenderName = SenderIdentityResolver.resolveSenderName(
+                rawSenderId = userGift.senderId,
+                storedSenderName = userGift.senderName,
+                isAnonymous = anon
+            )
+
+            val resolvedCost = when {
+                userGift.giftCostStars > 0L -> userGift.giftCostStars
+                catalog != null && catalog.price > 0L -> catalog.price
+                else -> 50L
             }
 
             return PinnedGift(
                 id = userGift.userGiftId,
                 catalogGiftId = userGift.catalogGiftId,
                 title = title,
-                senderName = if (userGift.isAnonymous) "Аноним" else userGift.senderId,
+                senderName = resolvedSenderName,
                 receiverId = userGift.receiverId,
                 upgradeLevel = userGift.upgradeLevel,
                 maxUpgradeLevel = catalog?.maxUpgradeLevel ?: 5,
@@ -119,7 +158,16 @@ data class PinnedGift(
                 isExclusive = isExcl,
                 pinOrderIndex = userGift.pinOrderIndex,
                 message = userGift.message,
-                acquiredAt = userGift.acquiredAt
+                acquiredAt = userGift.acquiredAt,
+                senderId = userGift.senderId,
+                senderAvatarUrl = if (anon) "" else userGift.senderAvatarUrl,
+                isAnonymous = anon,
+                costStars = resolvedCost,
+                isCollectible = userGift.isCollectible,
+                serialNumber = userGift.serialNumber,
+                modelName = userGift.modelName,
+                patternName = userGift.patternName,
+                accentColorHex = userGift.accentColorHex
             )
         }
 
@@ -135,14 +183,15 @@ data class PinnedGift(
                 receiverId = "me",
                 upgradeLevel = 5,
                 maxUpgradeLevel = 5,
-                animationAssetUrl = "cyber_dragon.json",
+                animationAssetUrl = "gift_rocket_lottie.json",
                 backdropColorHex = "#1E1B4B",
                 accentGlowHex = "#FFD700",
                 emojiIcon = "🐉",
                 isExclusive = true,
                 pinOrderIndex = 0,
                 message = "Эксклюзивный подарок основателю KuoteX!",
-                acquiredAt = System.currentTimeMillis() - 86400000L * 3
+                acquiredAt = System.currentTimeMillis() - 86400000L * 3,
+                costStars = 250L
             ),
             PinnedGift(
                 id = "ug_golden_crown_sample",
@@ -152,14 +201,15 @@ data class PinnedGift(
                 receiverId = "me",
                 upgradeLevel = 3,
                 maxUpgradeLevel = 5,
-                animationAssetUrl = "golden_crown.json",
+                animationAssetUrl = "gift_trophy_lottie.json",
                 backdropColorHex = "#281904",
                 accentGlowHex = "#F59E0B",
                 emojiIcon = "👑",
                 isExclusive = true,
                 pinOrderIndex = 1,
                 message = "С днем рождения!",
-                acquiredAt = System.currentTimeMillis() - 86400000L * 10
+                acquiredAt = System.currentTimeMillis() - 86400000L * 10,
+                costStars = 150L
             ),
             PinnedGift(
                 id = "ug_neon_diamond_sample",
@@ -169,14 +219,15 @@ data class PinnedGift(
                 receiverId = "me",
                 upgradeLevel = 2,
                 maxUpgradeLevel = 3,
-                animationAssetUrl = "neon_diamond.json",
+                animationAssetUrl = "gift_diamond_lottie.json",
                 backdropColorHex = "#062826",
                 accentGlowHex = "#06B6D4",
                 emojiIcon = "💎",
                 isExclusive = false,
                 pinOrderIndex = 2,
                 message = "За отличную работу над проектом 🚀",
-                acquiredAt = System.currentTimeMillis() - 86400000L * 15
+                acquiredAt = System.currentTimeMillis() - 86400000L * 15,
+                costStars = 100L
             ),
             PinnedGift(
                 id = "ug_cosmic_rocket_sample",
@@ -186,14 +237,16 @@ data class PinnedGift(
                 receiverId = "me",
                 upgradeLevel = 1,
                 maxUpgradeLevel = 3,
-                animationAssetUrl = "cosmic_rocket.json",
+                animationAssetUrl = "gift_rocket_lottie.json",
                 backdropColorHex = "#1E1035",
                 accentGlowHex = "#EC4899",
                 emojiIcon = "🚀",
                 isExclusive = false,
                 pinOrderIndex = 3,
                 message = "Только вперед!",
-                acquiredAt = System.currentTimeMillis() - 86400000L * 25
+                acquiredAt = System.currentTimeMillis() - 86400000L * 25,
+                isAnonymous = true,
+                costStars = 50L
             )
         )
     }
@@ -219,14 +272,14 @@ enum class CurrencyType(val symbol: String, val title: String, val starsConversi
 
     fun formatPrice(starsAmount: Long): String {
         return when (this) {
-            STARS -> "$starsAmount ⭐"
+            STARS -> "%,d ⭐".format(starsAmount)
             USD -> {
                 val converted = starsAmount * starsConversionRate
                 "$%.2f".format(converted)
             }
             RUB -> {
                 val converted = (starsAmount * starsConversionRate).toLong()
-                "$converted ₽"
+                "%,d ₽".format(converted)
             }
             EUR -> {
                 val converted = starsAmount * starsConversionRate
@@ -237,14 +290,14 @@ enum class CurrencyType(val symbol: String, val title: String, val starsConversi
 }
 
 /**
- * Collectible unique gifts with serial numbering (#1, #2095, etc.), pattern/backdrop,
- * model attributes, and marketplace trading price in Stars.
+ * Collectible unique gifts with serial numbering (#1, #22,770, etc.), pattern/backdrop,
+ * model attributes, Lottie animation, and marketplace trading price in Stars.
  */
 data class CollectibleGift(
     val id: String,
     val serialNumber: Int,
     val baseTitle: String,
-    val category: String, // "Nail Bracelet", "Durov's Glasses", "Perfume Bottle", etc.
+    val category: String,
     val emojiIcon: String,
     val modelName: String,
     val patternName: String,
@@ -254,10 +307,25 @@ data class CollectibleGift(
     val ownerId: String = "",
     val ownerName: String = "",
     val isForSale: Boolean = true,
-    val isPinnedToUsername: Boolean = false
+    val isPinnedToUsername: Boolean = false,
+    val collectionId: String = "",
+    val backdropName: String = "",
+    val rarityGemTier: Int = 1,
+    val lottieAssetUrl: String = "",
+    val acceptsStarsOnly: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis()
 ) {
     val formattedSerialNumber: String
         get() = "#%,d".format(serialNumber)
+
+    val effectiveCollectionId: String
+        get() = collectionId.ifBlank { category.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_') }
+
+    val effectiveBackdropName: String
+        get() = backdropName.ifBlank { "Classic Dark" }
+
+    val effectiveLottieAsset: String
+        get() = lottieAssetUrl.ifBlank { resolveGiftLottieAsset("", emojiIcon, baseTitle) }
 
     val parsedBackdropColor: Color
         get() = try {
@@ -271,6 +339,34 @@ data class CollectibleGift(
             Color(android.graphics.Color.parseColor(accentGlowHex))
         } catch (_: Exception) {
             Color(0xFFFFD700)
+        }
+}
+
+/**
+ * Summary card for a Collectible Collection shown in the main GiftMarketplace grid with green "маркет" ribbon.
+ */
+data class CollectibleCollectionSummary(
+    val collectionId: String,
+    val title: String,
+    val emojiIcon: String,
+    val floorPriceStars: Long,
+    val offersCount: Int,
+    val backdropColorHex: String,
+    val accentColorHex: String,
+    val lottieAssetUrl: String
+) {
+    val parsedBackdropColor: Color
+        get() = try {
+            Color(android.graphics.Color.parseColor(backdropColorHex))
+        } catch (_: Exception) {
+            Color(0xFF16161C)
+        }
+
+    val parsedAccentColor: Color
+        get() = try {
+            Color(android.graphics.Color.parseColor(accentColorHex))
+        } catch (_: Exception) {
+            Color(0xFF8B5CF6)
         }
 }
 

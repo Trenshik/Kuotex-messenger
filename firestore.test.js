@@ -881,5 +881,42 @@ test("Atomic gift purchase transaction parity: self-gift and cross-user gift suc
     created_at: now + 100,
   });
   await assertSucceeds(bobBatch.commit());
+
+  // 3. Collectible skin gift with sender_name, sender_avatar_url, model_name, pattern_name, serial_number, premium_claimed
+  await assertSucceeds(
+    aliceDb.collection("user_gifts").doc("ug_skin_mirage_1").set({
+      catalog_gift_id: "col_mirage_22660",
+      sender_id: ALICE_UID,
+      receiver_id: BOB_UID,
+      is_pinned_to_header: true,
+      pin_order_index: 1,
+      upgrade_level: 1,
+      transferable: true,
+      message: "Shine bright!",
+      is_anonymous: false,
+      acquired_at: now + 200,
+      cached_title: "Mirage Lamp #22,660",
+      cached_emoji: "🪔",
+      cached_color_hex: "#1F7A6E",
+      sender_name: "Alice KuoteX",
+      sender_avatar_url: "https://example.com/alice.jpg",
+      gift_cost_stars: 471,
+      is_collectible: true,
+      serial_number: 22660,
+      model_name: "Desert Jewel",
+      pattern_name: "Cactus",
+      accent_color_hex: "#10B981",
+      lottie_asset_url: "gift_lamp_lottie.json",
+    })
+  );
+
+  // Receiver (Bob) can mark premium_claimed = true; sender (Alice) cannot
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  await assertSucceeds(
+    bobDb.collection("user_gifts").doc("ug_skin_mirage_1").update({ premium_claimed: true })
+  );
+  await assertFails(
+    aliceDb.collection("user_gifts").doc("ug_skin_mirage_1").update({ premium_claimed: true })
+  );
 });
 
